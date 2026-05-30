@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dimensions,
+  PanResponder,
   Platform,
   StyleSheet,
   Text,
@@ -773,6 +774,11 @@ export default function GameScreen() {
   const [coins, setCoins] = useState(0);
   const [cameraMode, setCameraMode] = useState<CameraMode>("exterior");
 
+  // ── Free-look refs for interior first-person mode ──
+  const camYawRef   = useRef(0);   // horizontal rotation (radians)
+  const camPitchRef = useRef(0);   // vertical tilt (radians, clamped)
+  const lastTouchRef = useRef({ x: 0, y: 0 });
+
   const setScoreRef = useRef(setScore);
   const setGameOverRef = useRef(setGameOver);
   const setCoinsRef = useRef(setCoins);
@@ -783,6 +789,37 @@ export default function GameScreen() {
   setCoinsRef.current = setCoins;
   // keep ref in sync with state so the game loop can read it without re-binding
   cameraModeRef.current = cameraMode;
+
+  // ── PanResponder — only hijacks drag in interior mode ──────────────────
+  const panResponder = useRef(
+    PanResponder.create({
+      // Don't steal tap-start so D-pad buttons still fire
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      // Claim the gesture once a drag starts and we're in interior mode
+      onMoveShouldSetPanResponder: () =>
+        cameraModeRef.current === "interior",
+      onMoveShouldSetPanResponderCapture: () => false,
+      onPanResponderGrant: (e) => {
+        lastTouchRef.current = {
+          x: e.nativeEvent.pageX,
+          y: e.nativeEvent.pageY,
+        };
+      },
+      onPanResponderMove: (e) => {
+        const dx = e.nativeEvent.pageX - lastTouchRef.current.x;
+        const dy = e.nativeEvent.pageY - lastTouchRef.current.y;
+        lastTouchRef.current = {
+          x: e.nativeEvent.pageX,
+          y: e.nativeEvent.pageY,
+        };
+        camYawRef.current   += dx * 0.005;
+        camPitchRef.current -= dy * 0.005;
+        // Clamp pitch so camera can't flip over
+        camPitchRef.current = Math.max(-0.65, Math.min(0.65, camPitchRef.current));
+      },
+    })
+  ).current;
 
   const generateRows = useCallback((upToRowIdx: number) => {
     const s = stateRef.current;
@@ -1052,15 +1089,17 @@ export default function GameScreen() {
           } else {
             // Interior: camera at chicken's eye level, hidden model, first-person
             s.playerMesh.visible = false;
-            // Eye is at head height (0.78) + any hop arc the body is at right now
             const eyeY = s.playerMesh.position.y + 0.78;
-            // Slightly forward of the body in world space (-Z is forward)
             const eyeZ = pz - 0.1;
             s.camera.position.x += (px   - s.camera.position.x) * 0.22;
             s.camera.position.y += (eyeY - s.camera.position.y) * 0.22;
             s.camera.position.z += (eyeZ - s.camera.position.z) * 0.22;
-            // Look far ahead along the road
-            s.camera.lookAt(px, 0.45, pz - 9);
+            // Free-look: compute look target from yaw + pitch
+            const lookDist = 9;
+            const lookX = px  + Math.sin(camYawRef.current) * lookDist;
+            const lookY = eyeY + Math.sin(camPitchRef.current) * lookDist * 0.5;
+            const lookZ = eyeZ - Math.cos(camYawRef.current) * lookDist;
+            s.camera.lookAt(lookX, lookY, lookZ);
           }
         }
 
@@ -1144,7 +1183,7 @@ export default function GameScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={styles.root} {...panResponder.panHandlers}>
       {webGLAvailable && (
         <GLView
           style={StyleSheet.absoluteFill}
@@ -1168,9 +1207,17 @@ export default function GameScreen() {
       {started && !gameOver && (
         <TouchableOpacity
           style={styles.camBtn}
-          onPress={() =>
-            setCameraMode((m) => (m === "exterior" ? "interior" : "exterior"))
-          }
+          onPress={() => {
+            setCameraMode((m) => {
+              const next = m === "exterior" ? "interior" : "exterior";
+              // Reset free-look angles when switching modes
+              if (next === "exterior") {
+                camYawRef.current   = 0;
+                camPitchRef.current = 0;
+              }
+              return next;
+            });
+          }}
           activeOpacity={0.75}
         >
           <Text style={styles.camBtnText}>
