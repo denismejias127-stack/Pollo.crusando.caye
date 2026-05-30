@@ -156,103 +156,193 @@ function setShadow(obj: THREE.Object3D, cast = true, receive = true) {
 function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
   const g = new THREE.Group();
   const isTruck = Math.random() < 0.22;
-  const len = isTruck ? 2.4 + Math.random() * 0.4 : 1.5 + Math.random() * 0.7;
-  const dep = isTruck ? 0.82 : 0.68;
+  const len = isTruck ? 2.5 + Math.random() * 0.4 : 1.6 + Math.random() * 0.7;
+  const dep = isTruck ? 0.84 : 0.7;
   const colorHex = C.carColors[Math.floor(Math.random() * C.carColors.length)];
   const mat = new THREE.MeshLambertMaterial({ color: colorHex });
+  const chromeMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
 
-  // ── chassis ──
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(len, 0.22, dep), mat);
-  chassis.position.y = 0.24;
-  g.add(chassis);
+  const frontX = dir > 0 ? len / 2 : -(len / 2);
+  const backX  = dir > 0 ? -(len / 2) : len / 2;
 
   if (isTruck) {
-    // cab
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, dep * 0.92), mat);
-    cab.position.set(dir > 0 ? len / 2 - 0.45 : -(len / 2 - 0.45), 0.5, 0);
+    // ── TRUCK ──────────────────────────────────────────────────────────────
+    // frame
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(len, 0.18, dep), mat);
+    frame.position.y = 0.22;
+    g.add(frame);
+    // cab (front half)
+    const cabLen = 1.0;
+    const cabX = dir > 0 ? len / 2 - cabLen / 2 : -(len / 2 - cabLen / 2);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(cabLen, 0.62, dep * 0.93), mat);
+    cab.position.set(cabX, 0.62, 0);
     g.add(cab);
-    // cargo box
+    // cab windscreen
+    const cWind = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 0.46, dep * 0.75), MAT.glass);
+    cWind.position.set(frontX * 0.84, 0.62, 0);
+    g.add(cWind);
+    // cargo box (rear half)
+    const cargoLen = len - cabLen - 0.08;
+    const cargoX = dir > 0 ? -(len / 2 - cargoLen / 2) : len / 2 - cargoLen / 2;
     const cargo = new THREE.Mesh(
-      new THREE.BoxGeometry(len * 0.6, 0.5, dep * 0.9),
-      new THREE.MeshLambertMaterial({ color: 0xeeeeee })
+      new THREE.BoxGeometry(cargoLen, 0.58, dep * 0.92),
+      new THREE.MeshLambertMaterial({ color: 0xe0e0e0 })
     );
-    cargo.position.set(dir > 0 ? -(len * 0.18) : len * 0.18, 0.5, 0);
+    cargo.position.set(cargoX, 0.6, 0);
     g.add(cargo);
+    // cargo door lines
+    const doorLine = new THREE.Mesh(
+      new THREE.BoxGeometry(0.03, 0.54, dep * 0.9),
+      new THREE.MeshLambertMaterial({ color: 0xaaaaaa })
+    );
+    doorLine.position.set(dir > 0 ? cargoX + cargoLen * 0.15 : cargoX - cargoLen * 0.15, 0.6, 0);
+    g.add(doorLine);
+    // exhaust pipe
+    const exhaust = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 0.35, 6),
+      new THREE.MeshLambertMaterial({ color: 0x555555 })
+    );
+    exhaust.rotation.z = Math.PI / 2;
+    exhaust.position.set(backX * 0.85, 0.55, dep / 2 - 0.1);
+    g.add(exhaust);
+
   } else {
-    // body upper
-    const body = new THREE.Mesh(new THREE.BoxGeometry(len, 0.3, dep * 0.94), mat);
-    body.position.y = 0.46;
-    g.add(body);
-    // cabin
-    const cabin = new THREE.Mesh(
-      new THREE.BoxGeometry(len * 0.56, 0.3, dep * 0.86),
-      mat
-    );
-    cabin.position.set(0, 0.72, 0);
+    // ── SEDAN / HATCHBACK ──────────────────────────────────────────────────
+    // lower body (full length)
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(len, 0.32, dep), mat);
+    lower.position.y = 0.22;
+    g.add(lower);
+
+    // hood (front) — same height as lower body, adds roof thickness
+    const hoodLen = len * 0.3;
+    const hoodX = frontX * 0.72;
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(hoodLen, 0.1, dep * 0.97), mat);
+    hood.position.set(hoodX, 0.43, 0);
+    g.add(hood);
+
+    // cabin upper box
+    const cabinLen = len * 0.52;
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(cabinLen, 0.28, dep * 0.88), mat);
+    cabin.position.set(0, 0.66, 0);
     g.add(cabin);
-  }
 
-  // ── front & rear panels ──
-  const frontX = dir > 0 ? len / 2 : -(len / 2);
-  const backX = dir > 0 ? -(len / 2) : len / 2;
+    // trunk (rear)
+    const trunkLen = len * 0.28;
+    const trunkX = backX * 0.72;
+    const trunk = new THREE.Mesh(new THREE.BoxGeometry(trunkLen, 0.1, dep * 0.97), mat);
+    trunk.position.set(trunkX, 0.43, 0);
+    g.add(trunk);
 
-  // front windscreen
-  if (!isTruck) {
+    // front windscreen (angled feel via thin box)
     const windF = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.26, dep * 0.74),
-      MAT.glass
-    );
-    windF.position.set(frontX * 0.88, 0.72, 0);
+      new THREE.BoxGeometry(0.07, 0.3, dep * 0.8), MAT.glass);
+    windF.position.set(frontX * 0.66, 0.65, 0);
     g.add(windF);
+
     // rear window
     const windR = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.22, dep * 0.7),
-      MAT.glass
-    );
-    windR.position.set(backX * 0.88, 0.72, 0);
+      new THREE.BoxGeometry(0.07, 0.26, dep * 0.76), MAT.glass);
+    windR.position.set(backX * 0.66, 0.64, 0);
     g.add(windR);
-  }
 
-  // headlights (yellow)
-  [-dep * 0.3, dep * 0.3].forEach((lz) => {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.13), MAT.headlight);
-    hl.position.set(frontX, 0.34, lz);
-    g.add(hl);
-  });
-  // taillights (red)
-  [-dep * 0.3, dep * 0.3].forEach((lz) => {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.13), MAT.taillight);
-    tl.position.set(backX, 0.34, lz);
-    g.add(tl);
-  });
+    // side windows (glass strips on both sides of cabin)
+    [-dep / 2 - 0.01, dep / 2 + 0.01].forEach((wz2) => {
+      const sw = new THREE.Mesh(
+        new THREE.BoxGeometry(cabinLen * 0.9, 0.2, 0.04), MAT.glass);
+      sw.position.set(0, 0.67, wz2);
+      g.add(sw);
+    });
 
-  // side mirrors
-  if (!isTruck) {
-    [-dep / 2 - 0.06, dep / 2 + 0.06].forEach((mz) => {
-      const mir = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.07, 0.06),
-        mat
-      );
-      mir.position.set(frontX * 0.55, 0.62, mz);
-      g.add(mir);
+    // side mirrors
+    [-dep / 2 - 0.07, dep / 2 + 0.07].forEach((mz) => {
+      const mirArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.04), mat);
+      mirArm.position.set(frontX * 0.62, 0.6, mz);
+      g.add(mirArm);
+      const mirFace = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 0.08), mat);
+      mirFace.position.set(frontX * 0.56, 0.6, mz);
+      g.add(mirFace);
+    });
+
+    // door crease lines (thin dark strips)
+    const creaseMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    [-dep / 2 - 0.01, dep / 2 + 0.01].forEach((wz2) => {
+      const crease = new THREE.Mesh(new THREE.BoxGeometry(len * 0.85, 0.02, 0.04), creaseMat);
+      crease.position.set(0, 0.35, wz2);
+      g.add(crease);
     });
   }
 
-  // ── wheels ──
-  const wg = new THREE.CylinderGeometry(0.16, 0.16, 0.13, 10);
-  const rimG = new THREE.CylinderGeometry(0.09, 0.09, 0.14, 6);
+  // ── SHARED: bumpers, lights, wheels ──────────────────────────────────────
+
+  // front bumper (chrome)
+  const bumperF = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14, dep + 0.06), chromeMat);
+  bumperF.position.set(frontX, 0.17, 0);
+  g.add(bumperF);
+  // rear bumper
+  const bumperR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14, dep + 0.06), chromeMat);
+  bumperR.position.set(backX, 0.17, 0);
+  g.add(bumperR);
+
+  // headlights — two rectangular units
+  [-dep * 0.28, dep * 0.28].forEach((lz) => {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.16), MAT.headlight);
+    hl.position.set(frontX * 0.96, 0.32, lz);
+    g.add(hl);
+    // DRL strip above headlight
+    const drl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.14), MAT.headlight);
+    drl.position.set(frontX * 0.96, 0.46, lz);
+    g.add(drl);
+  });
+  // taillights (red L-shape)
+  [-dep * 0.28, dep * 0.28].forEach((lz) => {
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.2), MAT.taillight);
+    tl.position.set(backX * 0.96, 0.32, lz);
+    g.add(tl);
+  });
+
+  // license plates
+  const plateMat = new THREE.MeshLambertMaterial({ color: 0xfafafa });
+  [frontX, backX].forEach((px) => {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.28), plateMat);
+    plate.position.set(px * 0.97, 0.2, 0);
+    g.add(plate);
+  });
+
+  // ── wheels (tire + rim + 5-spoke hub) ────────────────────────────────────
+  const tireG = new THREE.CylinderGeometry(0.17, 0.17, 0.14, 12);
+  const rimDiscG = new THREE.CylinderGeometry(0.12, 0.12, 0.02, 10);
+  const spokeG = new THREE.BoxGeometry(0.2, 0.03, 0.03);
+  const hubG = new THREE.CylinderGeometry(0.04, 0.04, 0.03, 8);
+
   const wx = (len / 2) * 0.76;
-  const wz = dep / 2 + 0.04;
-  [[-wx, 0.17, wz], [-wx, 0.17, -wz], [wx, 0.17, wz], [wx, 0.17, -wz]].forEach(
+  const wz = dep / 2 + 0.045;
+
+  [[-wx, 0.18, wz], [-wx, 0.18, -wz], [wx, 0.18, wz], [wx, 0.18, -wz]].forEach(
     ([x, y, z]) => {
-      const wh = new THREE.Mesh(wg, MAT.wheel);
-      wh.rotation.x = Math.PI / 2;
-      wh.position.set(x, y, z);
-      g.add(wh);
-      const rim = new THREE.Mesh(rimG, MAT.wheelRim);
-      rim.rotation.x = Math.PI / 2;
-      rim.position.set(x, y, z > 0 ? z + 0.01 : z - 0.01);
-      g.add(rim);
+      // tire
+      const tire = new THREE.Mesh(tireG, MAT.wheel);
+      tire.rotation.x = Math.PI / 2;
+      tire.position.set(x, y, z);
+      g.add(tire);
+      // rim disc
+      const rimDisc = new THREE.Mesh(rimDiscG, MAT.wheelRim);
+      rimDisc.rotation.x = Math.PI / 2;
+      rimDisc.position.set(x, y, z > 0 ? z + 0.07 : z - 0.07);
+      g.add(rimDisc);
+      // 5 spokes
+      for (let s2 = 0; s2 < 5; s2++) {
+        const spoke = new THREE.Mesh(spokeG, MAT.wheelRim);
+        spoke.rotation.z = (s2 / 5) * Math.PI * 2;
+        spoke.rotation.y = Math.PI / 2;
+        spoke.position.set(x, y, z > 0 ? z + 0.075 : z - 0.075);
+        g.add(spoke);
+      }
+      // center hub
+      const hub = new THREE.Mesh(hubG, new THREE.MeshLambertMaterial({ color: 0xaaaaaa }));
+      hub.rotation.x = Math.PI / 2;
+      hub.position.set(x, y, z > 0 ? z + 0.085 : z - 0.085);
+      g.add(hub);
     }
   );
 
@@ -367,67 +457,122 @@ function makeTree(seed: number): THREE.Group {
 
 function makeChicken(): THREE.Group {
   const g = new THREE.Group();
-  const yMat = new THREE.MeshLambertMaterial({ color: C.chicken });
-  const wMat = new THREE.MeshLambertMaterial({ color: C.wing });
-  const bMat = new THREE.MeshLambertMaterial({ color: C.beak });
-  const eMat = new THREE.MeshLambertMaterial({ color: C.eye });
-  const cMat = new THREE.MeshLambertMaterial({ color: C.comb });
+  const yMat  = new THREE.MeshLambertMaterial({ color: C.chicken });
+  const wMat  = new THREE.MeshLambertMaterial({ color: C.wing });
+  const bMat  = new THREE.MeshLambertMaterial({ color: C.beak });
+  const eMat  = new THREE.MeshLambertMaterial({ color: C.eye });
+  const cMat  = new THREE.MeshLambertMaterial({ color: C.comb });
   const legMat = new THREE.MeshLambertMaterial({ color: C.leg });
+  const eyeWhiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const bellyMat = new THREE.MeshLambertMaterial({ color: 0xfff8dc }); // cream belly
 
-  // body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.54, 0.52), yMat);
-  body.position.y = 0.3;
-  g.add(body);
+  // ── BODY — pear-shaped using a sphere scaled taller + slightly wider ──
+  const bodyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), yMat);
+  bodyMesh.scale.set(1.05, 1.25, 1.0);
+  bodyMesh.position.y = 0.37;
+  g.add(bodyMesh);
 
-  // wings
-  [-0.3, 0.3].forEach((wx2) => {
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.4), wMat);
-    wing.position.set(wx2, 0.32, 0);
-    g.add(wing);
-  });
+  // belly patch (cream, front-facing flat oval)
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 7), bellyMat);
+  belly.scale.set(0.85, 1.1, 0.28);
+  belly.position.set(0, 0.34, 0.27);
+  g.add(belly);
 
-  // head
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.38), yMat);
-  head.position.set(0, 0.74, 0.08);
-  g.add(head);
+  // ── HEAD — round sphere ──
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), yMat);
+  headMesh.position.set(0, 0.77, 0.09);
+  g.add(headMesh);
 
-  // beak
-  const beak = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.18), bMat);
-  beak.position.set(0, 0.71, 0.31);
-  g.add(beak);
+  // ── BEAK — orange cone pointing forward ──
+  const beakUpper = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.22, 7), bMat);
+  beakUpper.rotation.x = Math.PI / 2;
+  beakUpper.position.set(0, 0.78, 0.3);
+  g.add(beakUpper);
+  // lower jaw (slightly smaller, angled down a touch)
+  const beakLower = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.16, 7), bMat);
+  beakLower.rotation.x = Math.PI / 2 + 0.25;
+  beakLower.position.set(0, 0.735, 0.3);
+  g.add(beakLower);
 
-  // wattle
-  const wattle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.06), cMat);
-  wattle.position.set(0, 0.63, 0.3);
+  // ── WATTLE — red teardrop under beak ──
+  const wattle = new THREE.Mesh(new THREE.SphereGeometry(0.065, 7, 7), cMat);
+  wattle.scale.set(1, 1.45, 1);
+  wattle.position.set(0, 0.68, 0.27);
   g.add(wattle);
 
-  // eyes (white + pupil)
-  const eyeWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  [-0.12, 0.12].forEach((ex) => {
-    const white = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.04), eyeWhite);
-    white.position.set(ex, 0.78, 0.28);
+  // ── EYES — white sphere + dark pupil ──
+  [-0.13, 0.13].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), eyeWhiteMat);
+    white.position.set(ex, 0.79, 0.2);
     g.add(white);
-    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.04), eMat);
-    pupil.position.set(ex, 0.78, 0.3);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), eMat);
+    pupil.position.set(ex * 0.92, 0.79, 0.25);
     g.add(pupil);
+    // catch-light dot
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.016, 5, 5), eyeWhiteMat);
+    shine.position.set(ex * 0.88 + 0.015, 0.806, 0.265);
+    g.add(shine);
   });
 
-  // comb (3 bumps)
-  [-0.06, 0, 0.06].forEach((cx) => {
-    const bump = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.07), cMat);
-    bump.position.set(cx, 0.96, 0.04);
+  // ── COMB — 3 round bumps on top ──
+  [-0.07, 0, 0.07].forEach((cx, i) => {
+    const bump = new THREE.Mesh(new THREE.SphereGeometry(0.058 - i * 0.006, 7, 6), cMat);
+    bump.scale.y = 1.3;
+    bump.position.set(cx, 0.96 + i * 0.01, 0.04);
     g.add(bump);
   });
 
-  // legs
-  [-0.15, 0.15].forEach((lx) => {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.09), legMat);
-    leg.position.set(lx, 0.03, 0);
-    g.add(leg);
-    // foot
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.12), legMat);
-    foot.position.set(lx, -0.07, 0.03);
-    g.add(foot);
+  // ── TAIL FEATHERS — fan of cones pointing upward/backward ──
+  [-0.12, 0, 0.12].forEach((tz, i) => {
+    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.3, 5), wMat);
+    feather.rotation.x = -(Math.PI / 2 + 0.8 + i * 0.07);
+    feather.rotation.z = tz * 1.2;
+    feather.position.set(tz * 0.5, 0.42 + Math.abs(i - 1) * 0.04, -0.28);
+    g.add(feather);
+  });
+
+  // ── WINGS — flattened spheres on sides ──
+  [-1, 1].forEach((side) => {
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 7), wMat);
+    wing.scale.set(0.28, 0.72, 1.0);
+    wing.rotation.z = side * 0.18;
+    wing.position.set(side * 0.31, 0.37, -0.02);
+    g.add(wing);
+    // primary feather tips
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.2, 5), wMat);
+    tip.rotation.z = side * (Math.PI / 2 + 0.15);
+    tip.position.set(side * 0.38, 0.22, 0.0);
+    g.add(tip);
+  });
+
+  // ── LEGS — cylinders with knee joint ──
+  [-0.14, 0.14].forEach((lx) => {
+    // upper thigh
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.042, 0.2, 7), legMat);
+    thigh.position.set(lx, 0.09, 0.0);
+    g.add(thigh);
+    // knee bump
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), legMat);
+    knee.position.set(lx, -0.02, 0.02);
+    g.add(knee);
+    // lower leg (angled slightly forward)
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.028, 0.2, 6), legMat);
+    shin.rotation.x = 0.22;
+    shin.position.set(lx, -0.13, 0.04);
+    g.add(shin);
+    // 3 toes
+    [-0.065, 0.0, 0.065].forEach((tz2, ti) => {
+      const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.012, 0.14, 5), legMat);
+      toe.rotation.x = Math.PI / 2;
+      toe.rotation.z = (ti - 1) * 0.35;
+      toe.position.set(lx + (ti - 1) * 0.04, -0.24, 0.09 + tz2 * 0.3);
+      g.add(toe);
+    });
+    // rear toe
+    const rearToe = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.01, 0.1, 5), legMat);
+    rearToe.rotation.x = -Math.PI / 2;
+    rearToe.position.set(lx, -0.24, -0.06);
+    g.add(rearToe);
   });
 
   setShadow(g, true, false);
