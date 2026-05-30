@@ -39,6 +39,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 // ─── Game Config ─────────────────────────────────────────────────────────────
 const CELL = 1;
 const BOARD_HALF = 4;
+const ROAD_HALF  = BOARD_HALF + 1; // visible road half-width (5 units each side)
 const HOP_MS = 160;
 const HOP_ARC = 0.55;
 const VISIBLE_ROWS = 24;
@@ -347,7 +348,7 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
   );
 
   setShadow(g, true, false);
-  const startX = dir === 1 ? -(BOARD_HALF + len + 2) : BOARD_HALF + len + 2;
+  const startX = dir === 1 ? -(ROAD_HALF + len / 2 + 0.2) : ROAD_HALF + len / 2 + 0.2;
   g.position.set(startX, 0, rowZ);
   return { mesh: g, x: startX, width: len, dir, speed: rowSpeed };
 }
@@ -619,21 +620,20 @@ function makeGrassRow(rowIdx: number): THREE.Group {
   return g;
 }
 
-/** Road row — asphalt with white dashes, yellow centre line, curbs, sidewalks. */
 function makeRoadRow(rowIdx: number): THREE.Group {
   const g = new THREE.Group();
 
-  // asphalt base
+  // asphalt base — finite width, NOT infinite
   const base = new THREE.Mesh(
-    new THREE.BoxGeometry(BOARD_HALF * 2 + 4, 0.12, CELL),
+    new THREE.BoxGeometry(ROAD_HALF * 2, 0.12, CELL),
     new THREE.MeshLambertMaterial({ color: C.road })
   );
   base.receiveShadow = true;
   g.add(base);
 
-  // yellow centre line (solid)
+  // yellow centre line
   const center = new THREE.Mesh(
-    new THREE.BoxGeometry(BOARD_HALF * 2 + 1, 0.01, 0.07),
+    new THREE.BoxGeometry(ROAD_HALF * 2 - 0.4, 0.01, 0.07),
     new THREE.MeshLambertMaterial({ color: C.roadCenter })
   );
   center.position.y = 0.07;
@@ -652,21 +652,51 @@ function makeRoadRow(rowIdx: number): THREE.Group {
     g.add(dash2);
   }
 
-  // curbs on each edge
+  // front & back curbs (along Z edges)
   [-1, 1].forEach((side) => {
     const curb = new THREE.Mesh(
-      new THREE.BoxGeometry(BOARD_HALF * 2 + 1, 0.15, 0.22),
+      new THREE.BoxGeometry(ROAD_HALF * 2, 0.15, 0.22),
       MAT.curb
     );
     curb.position.set(0, 0.01, side * (CELL / 2 - 0.06));
     curb.receiveShadow = true;
     g.add(curb);
 
-    // sidewalk beyond curb
-    const sw = new THREE.Mesh(new THREE.BoxGeometry(BOARD_HALF * 2 + 4, 0.1, 0.28), MAT.sidewalk);
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(ROAD_HALF * 2 + 0.5, 0.1, 0.28), MAT.sidewalk);
     sw.position.set(0, -0.01, side * (CELL / 2 + 0.2));
     sw.receiveShadow = true;
     g.add(sw);
+  });
+
+  // ── Side end-caps: visible road termination on left & right ─────────────
+  [-1, 1].forEach((side) => {
+    const edgeX = side * ROAD_HALF;
+
+    // Tall curb wall — marks where road ends
+    const endCurb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.34, CELL + 0.44),
+      MAT.curb
+    );
+    endCurb.position.set(edgeX, 0.1, 0);
+    g.add(endCurb);
+
+    // Grass shoulder beyond road edge
+    const shoulder = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.1, CELL + 0.5),
+      new THREE.MeshLambertMaterial({ color: C.grass })
+    );
+    shoulder.position.set(edgeX + side * 0.79, -0.01, 0);
+    shoulder.receiveShadow = true;
+    g.add(shoulder);
+
+    // Bollard post at end of road
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.055, 0.5, 7),
+      new THREE.MeshLambertMaterial({ color: 0xffd700 })
+    );
+    post.position.set(edgeX + side * 0.12, 0.28, 0);
+    post.castShadow = true;
+    g.add(post);
   });
 
   g.position.set(0, -0.06, -rowIdx * CELL);
@@ -856,7 +886,8 @@ export default function GameScreen() {
             if (row.kind !== "road") continue;
             for (const car of row.cars) {
               car.x += car.dir * car.speed * dt;
-              const limit = BOARD_HALF + car.width + 2.5;
+              // wrap just outside the visible road edge (ROAD_HALF)
+              const limit = ROAD_HALF + car.width / 2 + 0.2;
               if (car.dir === 1 && car.x > limit) car.x = -limit;
               else if (car.dir === -1 && car.x < -limit) car.x = limit;
               car.mesh.position.x = car.x;
