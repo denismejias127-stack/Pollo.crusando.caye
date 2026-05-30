@@ -62,6 +62,15 @@ interface CarObj {
   speed: number;
 }
 
+interface CoinObj {
+  mesh: THREE.Group;
+  x: number;
+  rowIdx: number;
+  collected: boolean;
+}
+
+type CameraMode = "exterior" | "interior";
+
 interface RowData {
   rowIdx: number;
   kind: "grass" | "road";
@@ -78,6 +87,7 @@ interface GameStateRef {
   renderer: THREE.WebGLRenderer | null;
   gl: any;
   rows: RowData[];
+  coins: CoinObj[];
   maxRowIdx: number;
   hop: {
     active: boolean;
@@ -90,6 +100,7 @@ interface GameStateRef {
   dead: boolean;
   score: number;
   maxScore: number;
+  coinScore: number;
   animId: number | null;
 }
 
@@ -580,6 +591,36 @@ function makeChicken(): THREE.Group {
   return g;
 }
 
+/** Spinning gold coin collectible */
+function makeCoin(): THREE.Group {
+  const g = new THREE.Group();
+  const goldMat = new THREE.MeshLambertMaterial({ color: 0xffd700 });
+  const edgeMat = new THREE.MeshLambertMaterial({ color: 0xe6a800 });
+  const innerMat = new THREE.MeshLambertMaterial({ color: 0xffec6e });
+
+  // Main disc
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.09, 14), goldMat);
+  g.add(disc);
+  // Edge banding
+  const edge = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.018, 5, 14), edgeMat);
+  edge.rotation.x = Math.PI / 2;
+  g.add(edge);
+  // Inner circle (top face)
+  const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.1, 12), innerMat);
+  inner.position.y = 0.0;
+  g.add(inner);
+  // $ star symbol (3 tiny boxes forming a cross)
+  [0, Math.PI / 2].forEach((rot) => {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.11, 0.04), edgeMat);
+    bar.rotation.y = rot;
+    bar.position.y = 0.05;
+    g.add(bar);
+  });
+
+  g.traverse((c) => { if ((c as THREE.Mesh).isMesh) c.castShadow = true; });
+  return g;
+}
+
 /** Grass row — houses or trees on sides plus sidewalk strip. */
 function makeGrassRow(rowIdx: number): THREE.Group {
   const g = new THREE.Group();
@@ -719,18 +760,29 @@ export default function GameScreen() {
     renderer: null,
     gl: null,
     rows: [],
+    coins: [],
     maxRowIdx: 0,
     hop: { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 },
     dead: false,
     score: 0,
     maxScore: 0,
+    coinScore: 0,
     animId: null,
   });
 
+  const [coins, setCoins] = useState(0);
+  const [cameraMode, setCameraMode] = useState<CameraMode>("exterior");
+
   const setScoreRef = useRef(setScore);
   const setGameOverRef = useRef(setGameOver);
+  const setCoinsRef = useRef(setCoins);
+  const cameraModeRef = useRef<CameraMode>("exterior");
+
   setScoreRef.current = setScore;
   setGameOverRef.current = setGameOver;
+  setCoinsRef.current = setCoins;
+  // keep ref in sync with state so the game loop can read it without re-binding
+  cameraModeRef.current = cameraMode;
 
   const generateRows = useCallback((upToRowIdx: number) => {
     const s = stateRef.current;
@@ -766,6 +818,22 @@ export default function GameScreen() {
 
       s.scene.add(mesh);
       s.rows.push({ rowIdx: idx, kind, mesh, cars });
+
+      // ── Spawn coins on grass rows (40% chance, skip row 0) ──
+      if (kind === "grass" && idx > 0 && Math.random() < 0.45) {
+        const numCoins = Math.random() < 0.3 ? 2 : 1;
+        const usedX = new Set<number>();
+        for (let ci = 0; ci < numCoins; ci++) {
+          let cx = Math.round(Math.random() * BOARD_HALF * 2 - BOARD_HALF);
+          if (usedX.has(cx)) cx = cx >= 0 ? cx - 1 : cx + 1;
+          usedX.add(cx);
+          const coinMesh = makeCoin();
+          coinMesh.position.set(cx, 0.28, -idx * CELL);
+          s.scene.add(coinMesh);
+          s.coins.push({ mesh: coinMesh, x: cx, rowIdx: idx, collected: false });
+        }
+      }
+
       s.maxRowIdx++;
     }
   }, []);
@@ -778,6 +846,14 @@ export default function GameScreen() {
       if (row.rowIdx < cutoff) {
         s.scene!.remove(row.mesh);
         row.cars.forEach((c) => s.scene!.remove(c.mesh));
+        return false;
+      }
+      return true;
+    });
+    // Remove coins behind the player
+    s.coins = s.coins.filter((coin) => {
+      if (coin.rowIdx < cutoff) {
+        if (!coin.collected) s.scene!.remove(coin.mesh);
         return false;
       }
       return true;
@@ -938,15 +1014,49 @@ export default function GameScreen() {
               s.playerMesh.position.set(s.playerX, 0, -s.playerZ);
             }
             checkCollision();
+            // ── Collect any coin at landing position ──
+            for (const coin of s.coins) {
+              if (!coin.collected && coin.rowIdx === s.playerZ &&
+                  Math.abs(coin.x - s.playerX) < 0.55) {
+                coin.collected = true;
+                s.scene!.remove(coin.mesh);
+                s.coinScore++;
+                setCoinsRef.current(s.coinScore);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              }
+            }
           }
         }
 
+        // ── Coin spin + bob animation ──
+        for (const coin of s.coins) {
+          if (!coin.collected) {
+            coin.mesh.rotation.y += dt * 2.8;
+            coin.mesh.position.y = 0.28 + Math.sin(now * 0.0028 + coin.x) * 0.07;
+          }
+        }
+
+        // ── Camera — exterior (overhead) or interior (first-person) ──
         if (s.camera && s.playerMesh) {
-          const tx = s.playerMesh.position.x * 0.28;
-          const tz = s.playerMesh.position.z + 7.5;
-          s.camera.position.x += (tx - s.camera.position.x) * 0.1;
-          s.camera.position.z += (tz - s.camera.position.z) * 0.1;
-          s.camera.lookAt(s.playerMesh.position.x, 0, s.playerMesh.position.z - 1);
+          const px = s.playerMesh.position.x;
+          const pz = s.playerMesh.position.z;
+          if (cameraModeRef.current === "exterior") {
+            const tx = px * 0.28;
+            const tz = pz + 7.5;
+            s.camera.position.x += (tx - s.camera.position.x) * 0.1;
+            s.camera.position.y += (9 - s.camera.position.y) * 0.06;
+            s.camera.position.z += (tz - s.camera.position.z) * 0.1;
+            s.camera.lookAt(px, 0, pz - 1);
+          } else {
+            // Interior: tight behind-chicken, low angle looking forward
+            const tX = px;
+            const tY = 1.5;
+            const tZ = pz + 1.4;
+            s.camera.position.x += (tX - s.camera.position.x) * 0.18;
+            s.camera.position.y += (tY - s.camera.position.y) * 0.18;
+            s.camera.position.z += (tZ - s.camera.position.z) * 0.18;
+            s.camera.lookAt(px, 0.65, pz - 4);
+          }
         }
 
         if (s.renderer && s.scene && s.camera) {
@@ -992,18 +1102,24 @@ export default function GameScreen() {
       s.scene.remove(row.mesh);
       row.cars.forEach((c) => s.scene!.remove(c.mesh));
     }
+    for (const coin of s.coins) {
+      if (!coin.collected) s.scene.remove(coin.mesh);
+    }
     s.rows = [];
+    s.coins = [];
     s.maxRowIdx = 0;
     s.playerX = 0;
     s.playerZ = 0;
     s.score = 0;
     s.maxScore = 0;
+    s.coinScore = 0;
     s.dead = false;
     s.hop = { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 };
     s.playerMesh.position.set(0, 0, 0);
     s.playerMesh.rotation.y = 0;
     generateRows(VISIBLE_ROWS);
     setScore(0);
+    setCoins(0);
     setGameOver(false);
   }, [generateRows]);
 
@@ -1031,11 +1147,34 @@ export default function GameScreen() {
         />
       )}
 
-      {/* Score */}
+      {/* Score + Coins */}
       {started && !gameOver && (
-        <View style={styles.scoreBox} pointerEvents="none">
-          <Text style={styles.scoreText}>{score}</Text>
+        <View style={styles.topBar} pointerEvents="none">
+          <View style={styles.scoreBox}>
+            <Text style={styles.scoreText}>🐾 {score}</Text>
+          </View>
+          <View style={styles.coinBox}>
+            <Text style={styles.coinText}>🪙 {coins}</Text>
+          </View>
         </View>
+      )}
+
+      {/* Camera toggle */}
+      {started && !gameOver && (
+        <TouchableOpacity
+          style={styles.camBtn}
+          onPress={() =>
+            setCameraMode((m) => (m === "exterior" ? "interior" : "exterior"))
+          }
+          activeOpacity={0.75}
+        >
+          <Text style={styles.camBtnText}>
+            {cameraMode === "exterior" ? "🎥" : "👁️"}
+          </Text>
+          <Text style={styles.camBtnLabel}>
+            {cameraMode === "exterior" ? "exterior" : "interior"}
+          </Text>
+        </TouchableOpacity>
       )}
 
       {/* Start screen */}
@@ -1060,6 +1199,9 @@ export default function GameScreen() {
           <Text style={styles.gameOverSub}>¡El pollo fue atropellado!</Text>
           <Text style={styles.gameOverScore}>{score}</Text>
           <Text style={styles.gameOverLabel}>filas cruzadas</Text>
+          <View style={styles.gameOverCoins}>
+            <Text style={styles.gameOverCoinText}>🪙 {coins} monedas</Text>
+          </View>
           <TouchableOpacity style={styles.startBtn} onPress={restart}>
             <Text style={styles.startBtnText}>REINTENTAR</Text>
           </TouchableOpacity>
@@ -1137,20 +1279,70 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 24,
   },
-  scoreBox: {
+  topBar: {
     position: "absolute",
     top: Platform.OS === "web" ? 80 : 56,
-    alignSelf: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  scoreBox: {
+    backgroundColor: "rgba(0,0,0,0.52)",
     borderRadius: 20,
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 7,
   },
   scoreText: {
     color: "#fff",
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: "800",
     letterSpacing: 1,
+  },
+  coinBox: {
+    backgroundColor: "rgba(0,0,0,0.52)",
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+  },
+  coinText: {
+    color: "#FFD700",
+    fontSize: 24,
+    fontWeight: "800",
+  },
+  camBtn: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 80 : 56,
+    right: 16,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  camBtnText: {
+    fontSize: 22,
+  },
+  camBtnLabel: {
+    color: "#ffffffcc",
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  gameOverCoins: {
+    backgroundColor: "rgba(255,215,0,0.18)",
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    marginTop: 2,
+  },
+  gameOverCoinText: {
+    color: "#FFD700",
+    fontSize: 20,
+    fontWeight: "700",
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
