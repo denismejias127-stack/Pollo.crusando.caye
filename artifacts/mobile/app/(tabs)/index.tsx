@@ -103,58 +103,126 @@ const C = {
   chicken: 0xffd700,
   beak: 0xff8c00,
   eye: 0x111111,
-  wheel: 0x222222,
+  wheel: 0x1a1a1a,
   comb: 0xff3333,
   leg: 0xff8c00,
+  houseWall: [0xf5deb3, 0xffe4c4, 0xfaebd7, 0xe8d5b7, 0xddd0b0, 0xcfcfba],
+  houseRoof: [0xcc3333, 0x993311, 0x446688, 0x774422, 0x553366],
+  door: 0x8b4513,
+  windowGlass: 0xaaddff,
 };
 
 // ─── Three.js object factories ────────────────────────────────────────────────
-function makeCar(dir: 1 | -1, rowZ: number): CarObj {
-  const group = new THREE.Group();
-  const w = 1.4 + Math.random() * 0.8;
+
+/** Cars travel along X. speed is shared per-row so they never catch up to each other. */
+function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
+  const g = new THREE.Group();
+  const len = 1.5 + Math.random() * 0.8; // length along X (travel axis)
+  const dep = 0.72; // depth along Z
   const colorHex = C.carColors[Math.floor(Math.random() * C.carColors.length)];
   const mat = new THREE.MeshLambertMaterial({ color: colorHex });
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x222233 });
+  const darkMat = new THREE.MeshLambertMaterial({ color: 0x111122 });
+  const lightMat = new THREE.MeshLambertMaterial({ color: 0xffffaa });
+  const wheelMat = new THREE.MeshLambertMaterial({ color: C.wheel });
 
   // body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(w, 0.42, 0.68), mat);
-  body.position.y = 0.28;
-  group.add(body);
-  // roof
-  const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(w * 0.62, 0.28, 0.58),
+  const body = new THREE.Mesh(new THREE.BoxGeometry(len, 0.38, dep), mat);
+  body.position.y = 0.26;
+  g.add(body);
+  // cabin
+  const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(len * 0.58, 0.28, dep * 0.88),
     mat
   );
-  roof.position.set(0, 0.63, 0);
-  group.add(roof);
-  // windscreen tint
-  const glass = new THREE.Mesh(
-    new THREE.BoxGeometry(w * 0.55, 0.22, 0.04),
+  cabin.position.set(0, 0.59, 0);
+  g.add(cabin);
+
+  // front windscreen + headlights face the direction of travel
+  const frontX = dir > 0 ? len / 2 - 0.01 : -(len / 2 - 0.01);
+  const wind = new THREE.Mesh(
+    new THREE.BoxGeometry(0.05, 0.22, dep * 0.76),
     darkMat
   );
-  glass.position.set(0, 0.6, 0.31);
-  group.add(glass);
-  // wheels
-  const wheelMat = new THREE.MeshLambertMaterial({ color: C.wheel });
-  const wg = new THREE.CylinderGeometry(0.14, 0.14, 0.1, 8);
-  const wx = (w / 2) * 0.8;
-  [
-    [-wx, 0.14, 0.35],
-    [-wx, 0.14, -0.35],
-    [wx, 0.14, 0.35],
-    [wx, 0.14, -0.35],
-  ].forEach(([x, y, z]) => {
-    const wh = new THREE.Mesh(wg, wheelMat);
-    wh.rotation.z = Math.PI / 2;
-    wh.position.set(x, y, z);
-    group.add(wh);
+  wind.position.set(frontX, 0.6, 0);
+  g.add(wind);
+  [-dep * 0.28, dep * 0.28].forEach((lz) => {
+    const light = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.1, 0.12),
+      lightMat
+    );
+    light.position.set(frontX, 0.28, lz);
+    g.add(light);
   });
 
-  const startX =
-    dir === 1 ? -(BOARD_HALF + w + 2) : BOARD_HALF + w + 2;
-  group.position.set(startX, 0, rowZ);
-  const speed = 2.2 + Math.random() * 2.8;
-  return { mesh: group, x: startX, width: w, dir, speed };
+  // wheels — cylinder axis along Z, placed at four corners
+  const wg = new THREE.CylinderGeometry(0.15, 0.15, 0.12, 8);
+  const wx = (len / 2) * 0.78;
+  const wz = dep / 2 + 0.03;
+  [
+    [-wx, 0.15, wz],
+    [-wx, 0.15, -wz],
+    [wx, 0.15, wz],
+    [wx, 0.15, -wz],
+  ].forEach(([x, y, z]) => {
+    const wh = new THREE.Mesh(wg, wheelMat);
+    wh.rotation.x = Math.PI / 2;
+    wh.position.set(x, y, z);
+    g.add(wh);
+  });
+
+  const startX = dir === 1 ? -(BOARD_HALF + len + 2) : BOARD_HALF + len + 2;
+  g.position.set(startX, 0, rowZ);
+  return { mesh: g, x: startX, width: len, dir, speed: rowSpeed };
+}
+
+/** A decorative house placed beside the road. seed drives color/size variety. */
+function makeHouse(seed: number): THREE.Group {
+  const g = new THREE.Group();
+  const wallColor = C.houseWall[seed % C.houseWall.length];
+  const roofColor = C.houseRoof[seed % C.houseRoof.length];
+  const w = 1.0 + (seed % 3) * 0.18;
+  const h = 0.75 + (seed % 2) * 0.28;
+  const d = 0.85;
+
+  // walls
+  const walls = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshLambertMaterial({ color: wallColor })
+  );
+  walls.position.y = h / 2;
+  g.add(walls);
+
+  // roof (flat-ish box slightly wider)
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(w + 0.14, 0.42, d + 0.14),
+    new THREE.MeshLambertMaterial({ color: roofColor })
+  );
+  roof.position.y = h + 0.18;
+  g.add(roof);
+
+  // door
+  const door = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.38, 0.05),
+    new THREE.MeshLambertMaterial({ color: C.door })
+  );
+  door.position.set(0, 0.19, d / 2 + 0.01);
+  g.add(door);
+
+  // windows
+  const winMat = new THREE.MeshLambertMaterial({ color: C.windowGlass });
+  const winW = 0.22;
+  const winH = 0.18;
+  [-w * 0.28, w * 0.28].forEach((wx2, i) => {
+    if (i === 0 && w < 1.1) return; // skip left window on tiny houses
+    const win = new THREE.Mesh(
+      new THREE.BoxGeometry(winW, winH, 0.05),
+      winMat
+    );
+    win.position.set(wx2, h * 0.6, d / 2 + 0.01);
+    g.add(win);
+  });
+
+  return g;
 }
 
 function makeChicken(): THREE.Group {
@@ -198,14 +266,33 @@ function makeChicken(): THREE.Group {
   return g;
 }
 
-function makeGrassRow(rowIdx: number): THREE.Mesh {
-  const geo = new THREE.BoxGeometry(BOARD_HALF * 2 + 2, 0.16, CELL);
-  const mat = new THREE.MeshLambertMaterial({
-    color: rowIdx % 2 === 0 ? C.grass : C.grassAlt,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, -0.08, -rowIdx * CELL);
-  return mesh;
+/** Grass row — includes houses on both sides (except row 0, the starting tile). */
+function makeGrassRow(rowIdx: number): THREE.Group {
+  const g = new THREE.Group();
+
+  // ground tile
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(BOARD_HALF * 2 + 2, 0.16, CELL),
+    new THREE.MeshLambertMaterial({
+      color: rowIdx % 2 === 0 ? C.grass : C.grassAlt,
+    })
+  );
+  base.position.y = -0.08;
+  g.add(base);
+
+  // houses on both sides (skip row 0 so the player isn't hemmed in at start)
+  if (rowIdx > 0) {
+    const leftHouse = makeHouse(rowIdx * 2);
+    leftHouse.position.set(-(BOARD_HALF + 2.0), 0, 0);
+    g.add(leftHouse);
+
+    const rightHouse = makeHouse(rowIdx * 2 + 1);
+    rightHouse.position.set(BOARD_HALF + 2.0, 0, 0);
+    g.add(rightHouse);
+  }
+
+  g.position.set(0, 0, -rowIdx * CELL);
+  return g;
 }
 
 function makeRoadRow(rowIdx: number): THREE.Group {
@@ -270,12 +357,18 @@ export default function GameScreen() {
       } else {
         mesh = makeRoadRow(idx);
         const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
+        // All cars on same row share same speed → they never catch up to each other
+        const rowSpeed = 1.8 + Math.random() * 2.8;
         const numCars = 1 + Math.floor(Math.random() * 3);
+        // Evenly space cars across the loop width so gaps stay constant
+        const loopWidth = (BOARD_HALF + 3) * 2;
+        const spacing = loopWidth / numCars;
         for (let c = 0; c < numCars; c++) {
-          const car = makeCar(dir, -idx * CELL);
-          car.x = dir === 1
-            ? -(BOARD_HALF + 2) - c * 5
-            : BOARD_HALF + 2 + c * 5;
+          const car = makeCar(dir, -idx * CELL, rowSpeed);
+          car.x =
+            dir === 1
+              ? -(BOARD_HALF + 2) - c * spacing
+              : BOARD_HALF + 2 + c * spacing;
           car.mesh.position.x = car.x;
           s.scene.add(car.mesh);
           cars.push(car);
