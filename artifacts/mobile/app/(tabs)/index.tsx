@@ -652,7 +652,8 @@ export default function GameScreen() {
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(C.sky);
-      scene.fog = new THREE.Fog(C.sky, 18, 36);
+      // fog starts close so the tile edges are never visible
+      scene.fog = new THREE.Fog(C.sky, 14, 28);
       s.scene = scene;
 
       const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 80);
@@ -680,6 +681,16 @@ export default function GameScreen() {
       sun.shadow.bias = -0.001;
       scene.add(sun);
 
+      // ── Infinite ground plane — follows player so edges never show ──
+      const groundPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(300, 600),
+        new THREE.MeshLambertMaterial({ color: C.grass })
+      );
+      groundPlane.rotation.x = -Math.PI / 2;
+      groundPlane.position.set(0, -0.11, -60);
+      groundPlane.receiveShadow = true;
+      scene.add(groundPlane);
+
       const chicken = makeChicken();
       chicken.position.set(0, 0, 0);
       scene.add(chicken);
@@ -695,6 +706,7 @@ export default function GameScreen() {
         lastMs = now;
 
         if (!s.dead) {
+          // Move cars
           for (const row of s.rows) {
             if (row.kind !== "road") continue;
             for (const car of row.cars) {
@@ -705,7 +717,26 @@ export default function GameScreen() {
               car.mesh.position.x = car.x;
             }
           }
+
+          // ── Continuous collision: runs every frame while player is stationary ──
+          if (!s.hop.active) {
+            const pRow = s.rows.find((r) => r.rowIdx === s.playerZ);
+            if (pRow && pRow.kind === "road") {
+              for (const car of pRow.cars) {
+                // player half-width 0.26, car half-width = car.width/2
+                if (Math.abs(car.x - s.playerX) < car.width / 2 + 0.26) {
+                  s.dead = true;
+                  setGameOverRef.current(true);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                  break;
+                }
+              }
+            }
+          }
         }
+
+        // Ground plane follows player Z so its edges are never visible
+        groundPlane.position.z = -(s.playerZ + 30);
 
         if (s.hop.active) {
           const elapsed = now - s.hop.startMs;
