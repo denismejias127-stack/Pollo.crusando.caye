@@ -1036,11 +1036,13 @@ export default function GameScreen() {
           }
         }
 
-        // ── Camera — exterior (overhead) or interior (first-person) ──
+        // ── Camera — exterior (overhead) or interior (first-person eyes) ──
         if (s.camera && s.playerMesh) {
           const px = s.playerMesh.position.x;
-          const pz = s.playerMesh.position.z;
+          const pz = s.playerMesh.position.z; // world Z = -playerZ (negative = forward)
           if (cameraModeRef.current === "exterior") {
+            // Show chicken in exterior mode
+            s.playerMesh.visible = true;
             const tx = px * 0.28;
             const tz = pz + 7.5;
             s.camera.position.x += (tx - s.camera.position.x) * 0.1;
@@ -1048,14 +1050,17 @@ export default function GameScreen() {
             s.camera.position.z += (tz - s.camera.position.z) * 0.1;
             s.camera.lookAt(px, 0, pz - 1);
           } else {
-            // Interior: tight behind-chicken, low angle looking forward
-            const tX = px;
-            const tY = 1.5;
-            const tZ = pz + 1.4;
-            s.camera.position.x += (tX - s.camera.position.x) * 0.18;
-            s.camera.position.y += (tY - s.camera.position.y) * 0.18;
-            s.camera.position.z += (tZ - s.camera.position.z) * 0.18;
-            s.camera.lookAt(px, 0.65, pz - 4);
+            // Interior: camera at chicken's eye level, hidden model, first-person
+            s.playerMesh.visible = false;
+            // Eye is at head height (0.78) + any hop arc the body is at right now
+            const eyeY = s.playerMesh.position.y + 0.78;
+            // Slightly forward of the body in world space (-Z is forward)
+            const eyeZ = pz - 0.1;
+            s.camera.position.x += (px   - s.camera.position.x) * 0.22;
+            s.camera.position.y += (eyeY - s.camera.position.y) * 0.22;
+            s.camera.position.z += (eyeZ - s.camera.position.z) * 0.22;
+            // Look far ahead along the road
+            s.camera.lookAt(px, 0.45, pz - 9);
           }
         }
 
