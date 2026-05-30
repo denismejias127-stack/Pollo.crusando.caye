@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "5eDRb1euyhM5gk65e7xN_"
+uri = "file://artifacts/mobile/assets/images/icon.png"
+type = "image"
+title = "chicken game icon"
