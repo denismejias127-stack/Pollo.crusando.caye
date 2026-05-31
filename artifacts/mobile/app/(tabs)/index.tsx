@@ -1117,11 +1117,13 @@ export default function GameScreen() {
   const setScoreRef = useRef(setScore);
   const setGameOverRef = useRef(setGameOver);
   const setCoinsRef = useRef(setCoins);
+  const setTotalCoinsRef = useRef(setTotalCoins);
   const cameraModeRef = useRef<CameraMode>("exterior");
 
   setScoreRef.current = setScore;
   setGameOverRef.current = setGameOver;
   setCoinsRef.current = setCoins;
+  setTotalCoinsRef.current = setTotalCoins;
   // keep ref in sync with state so the game loop can read it without re-binding
   cameraModeRef.current = cameraMode;
 
@@ -1241,6 +1243,8 @@ export default function GameScreen() {
       const half = car.width / 2 + 0.25;
       if (Math.abs(car.x - s.playerX) < half) {
         s.dead = true;
+        setTotalCoinsRef.current((prev) => prev + s.coinScore);
+        s.coinScore = 0;
         setGameOverRef.current(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
@@ -1350,6 +1354,8 @@ export default function GameScreen() {
                 // player half-width 0.26, car half-width = car.width/2
                 if (Math.abs(car.x - s.playerX) < car.width / 2 + 0.26) {
                   s.dead = true;
+                  setTotalCoinsRef.current((prev) => prev + s.coinScore);
+                  s.coinScore = 0;
                   setGameOverRef.current(true);
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                   break;
@@ -1505,8 +1511,7 @@ export default function GameScreen() {
   const restart = useCallback(() => {
     const s = stateRef.current;
     if (!s.scene || !s.playerMesh) return;
-    // Accumulate coins from this round into the persistent wallet
-    setTotalCoins((prev) => prev + s.coinScore);
+    // Coins already accumulated at death — coinScore reset to 0 at that point
     for (const row of s.rows) {
       s.scene.remove(row.mesh);
       row.cars.forEach((c) => s.scene!.remove(c.mesh));
@@ -1635,10 +1640,10 @@ export default function GameScreen() {
           <Text style={styles.gameOverScore}>{score}</Text>
           <Text style={styles.gameOverLabel}>filas cruzadas</Text>
           <View style={styles.gameOverCoins}>
-            <Text style={styles.gameOverCoinText}>🪙 {coins} monedas esta ronda</Text>
+            <Text style={styles.gameOverCoinText}>🪙 {coins} esta ronda</Text>
           </View>
           <View style={styles.gameOverCoins}>
-            <Text style={styles.gameOverCoinText}>💰 {totalCoins + coins} total</Text>
+            <Text style={styles.gameOverCoinText}>💰 {totalCoins} total</Text>
           </View>
           <TouchableOpacity style={styles.startBtn} onPress={restart}>
             <Text style={styles.startBtnText}>REINTENTAR</Text>
