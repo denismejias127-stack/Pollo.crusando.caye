@@ -1270,6 +1270,34 @@ export default function GameScreen() {
     [generateRows, pruneRows]
   );
 
+  /**
+   * In first-person mode the d-pad moves relative to where you're looking.
+   * We rotate the input vector by the camera yaw, then snap to the nearest
+   * cardinal grid direction before forwarding to move().
+   */
+  const moveRelative = useCallback(
+    (gdx: number, gdz: number) => {
+      if (cameraModeRef.current !== "interior") {
+        move(gdx, gdz);
+        return;
+      }
+      const yaw = camYawRef.current;
+      // Rotate input by yaw to get world-space XZ direction
+      const wx =  gdx * Math.cos(yaw) + gdz * Math.sin(yaw);
+      const wz =  gdx * Math.sin(yaw) - gdz * Math.cos(yaw);
+      // Snap to the dominant cardinal axis
+      let snapX = 0, snapZ = 0;
+      if (Math.abs(wx) >= Math.abs(wz)) {
+        snapX = Math.sign(wx);
+      } else {
+        snapZ = Math.sign(wz);
+      }
+      // Convert world snap back to game move coords (game_dz = -world_wz)
+      move(snapX, -snapZ);
+    },
+    [move]
+  );
+
   const restart = useCallback(() => {
     const s = stateRef.current;
     if (!s.scene || !s.playerMesh) return;
@@ -1509,7 +1537,7 @@ export default function GameScreen() {
           <View style={styles.dpadRow}>
             <TouchableOpacity
               style={styles.dpadBtn}
-              onPress={() => move(0, 1)}
+              onPress={() => moveRelative(0, 1)}
               activeOpacity={0.7}
             >
               <Text style={styles.dpadArrow}>▲</Text>
@@ -1518,7 +1546,7 @@ export default function GameScreen() {
           <View style={styles.dpadRow}>
             <TouchableOpacity
               style={styles.dpadBtn}
-              onPress={() => move(-1, 0)}
+              onPress={() => moveRelative(-1, 0)}
               activeOpacity={0.7}
             >
               <Text style={styles.dpadArrow}>◀</Text>
@@ -1526,7 +1554,7 @@ export default function GameScreen() {
             <View style={styles.dpadCenter} />
             <TouchableOpacity
               style={styles.dpadBtn}
-              onPress={() => move(1, 0)}
+              onPress={() => moveRelative(1, 0)}
               activeOpacity={0.7}
             >
               <Text style={styles.dpadArrow}>▶</Text>
@@ -1535,7 +1563,7 @@ export default function GameScreen() {
           <View style={styles.dpadRow}>
             <TouchableOpacity
               style={styles.dpadBtn}
-              onPress={() => move(0, -1)}
+              onPress={() => moveRelative(0, -1)}
               activeOpacity={0.7}
             >
               <Text style={styles.dpadArrow}>▼</Text>
