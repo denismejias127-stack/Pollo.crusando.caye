@@ -1,4 +1,4 @@
-name: Generar APK de pollo abenturas
+Name: Generar APK de pollo abenturas
 
 on:
   workflow_dispatch:
@@ -19,11 +19,11 @@ jobs:
     - name: Instalar pnpm
       uses: pnpm/action-setup@v3
       with:
-        version: 9  # Instala la versión de pnpm compatible con tu proyecto
+        version: 9
 
     - name: Instalar Dependencias y Compilar
       run: |
-        pnpm install
+        pnpm install --no-frozen-lockfile
         pnpm run build --if-present
 
     - name: Configurar entorno de Android (Java 21)
