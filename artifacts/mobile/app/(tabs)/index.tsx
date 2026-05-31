@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -113,6 +114,9 @@ const CHARACTERS = [
   { id: "cat_yellow",   name: "Gato Amarillo",   cost: 100, emoji: "🐱", type: "cat"     as const, bodyColor: 0xffb300, accentColor: 0xe65100 },
   { id: "cat_white",    name: "Gato Blanco",     cost: 150, emoji: "🤍", type: "cat"     as const, bodyColor: 0xf5f5f5, accentColor: 0xbdbdbd },
   { id: "cat_gold",     name: "Gato Dorado",     cost: 200, emoji: "⭐", type: "cat"     as const, bodyColor: 0xffd700, accentColor: 0xff8f00 },
+  { id: "dog_avocado",  name: "Perro Aguacatero",cost: 200, emoji: "🥑", type: "dog"     as const, bodyColor: 0x558b2f, accentColor: 0x1b5e20 },
+  { id: "dog_shepherd", name: "Pastor Alemán",   cost: 300, emoji: "🐕", type: "dog"     as const, bodyColor: 0xd4a017, accentColor: 0x2e1a0e },
+  { id: "pilbu",        name: "Pilbu",           cost: 500, emoji: "👾", type: "pilbu"   as const, bodyColor: 0x7c4dff, accentColor: 0xea80fc },
 ] as const;
 type CharId = typeof CHARACTERS[number]["id"];
 
@@ -708,10 +712,182 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   return g;
 }
 
-/** Factory — creates the right 3D model for a character id */
+/** 3D dog model */
+function makeDog(bodyColor: number, accentColor: number): THREE.Group {
+  const g = new THREE.Group();
+  const bodyMat   = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const accentMat = new THREE.MeshLambertMaterial({ color: accentColor });
+  const noseMat   = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const eyeMat    = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const eyeWMat   = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const tongueMat = new THREE.MeshLambertMaterial({ color: 0xff4081 });
+  const bellMat   = new THREE.MeshLambertMaterial({ color: 0xfff8e1 });
+
+  // Body
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), bodyMat);
+  body.scale.set(1.18, 0.98, 1.05);
+  body.position.y = 0.34;
+  g.add(body);
+
+  // Belly patch
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), bellMat);
+  belly.scale.set(0.78, 0.85, 0.28);
+  belly.position.set(0, 0.28, 0.27);
+  g.add(belly);
+
+  // Head — rounder, bigger than cat
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), bodyMat);
+  head.position.set(0, 0.74, 0.08);
+  g.add(head);
+
+  // Snout — protruding box
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.2), bellMat);
+  snout.position.set(0, 0.69, 0.26);
+  g.add(snout);
+
+  // Nose
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), noseMat);
+  nose.scale.set(1.2, 0.85, 0.8);
+  nose.position.set(0, 0.73, 0.35);
+  g.add(nose);
+
+  // Tongue
+  const tongue = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), tongueMat);
+  tongue.scale.set(1, 0.5, 0.9);
+  tongue.position.set(0, 0.6, 0.33);
+  g.add(tongue);
+
+  // Eyes
+  [-0.11, 0.11].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.062, 8, 7), eyeWMat);
+    white.position.set(ex, 0.79, 0.24);
+    g.add(white);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), eyeMat);
+    pupil.position.set(ex * 0.9, 0.79, 0.265);
+    g.add(pupil);
+  });
+
+  // Floppy ears — flat boxes hanging down
+  [-0.28, 0.28].forEach((ex) => {
+    const ear = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.28, 0.08), accentMat);
+    ear.rotation.z = ex < 0 ? 0.15 : -0.15;
+    ear.position.set(ex, 0.67, 0.0);
+    g.add(ear);
+  });
+
+  // Tail — arc of spheres pointing up
+  for (let t = 0; t < 6; t++) {
+    const angle = (t / 5) * (Math.PI * 0.7);
+    const seg = new THREE.Mesh(
+      new THREE.SphereGeometry(0.065 - t * 0.006, 7, 6),
+      t >= 4 ? accentMat : bodyMat
+    );
+    seg.position.set(
+      Math.sin(angle) * 0.22,
+      0.3 + Math.cos(angle) * 0.22 + t * 0.04,
+      -0.25 - t * 0.018
+    );
+    g.add(seg);
+  }
+
+  // 4 legs + paws
+  [[-0.18, 0.1], [0.18, 0.1], [-0.14, -0.17], [0.14, -0.17]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.24, 7), bodyMat);
+    leg.position.set(lx, 0.02, lz);
+    g.add(leg);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.08, 7, 6), accentMat);
+    paw.scale.set(1, 0.6, 1.15);
+    paw.position.set(lx, -0.11, lz);
+    g.add(paw);
+  });
+
+  setShadow(g, true, false);
+  return g;
+}
+
+/** Pilbu — mysterious chubby blob creature */
+function makePilbu(): THREE.Group {
+  const g = new THREE.Group();
+  const bodyMat   = new THREE.MeshLambertMaterial({ color: 0x7c4dff });
+  const spotMat   = new THREE.MeshLambertMaterial({ color: 0xb388ff });
+  const eyeWMat   = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const pupilMat  = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
+  const shineMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const mouthMat  = new THREE.MeshLambertMaterial({ color: 0xff80ab });
+  const antMat    = new THREE.MeshLambertMaterial({ color: 0xea80fc });
+  const legMat    = new THREE.MeshLambertMaterial({ color: 0x651fff });
+
+  // Big round body — the blob is mostly head
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), bodyMat);
+  body.scale.set(1.0, 1.05, 0.95);
+  body.position.y = 0.42;
+  g.add(body);
+
+  // Tummy spot
+  const tummy = new THREE.Mesh(new THREE.SphereGeometry(0.22, 9, 8), spotMat);
+  tummy.scale.set(0.85, 0.8, 0.3);
+  tummy.position.set(0, 0.38, 0.33);
+  g.add(tummy);
+
+  // Giant round eyes — takes up 1/3 of face
+  [-0.16, 0.16].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.13, 9, 8), eyeWMat);
+    white.position.set(ex, 0.56, 0.34);
+    g.add(white);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 7), pupilMat);
+    pupil.position.set(ex * 0.88, 0.56, 0.42);
+    g.add(pupil);
+    // Eye shine
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 5), shineMat);
+    shine.position.set(ex * 0.82 + 0.04, 0.585, 0.47);
+    g.add(shine);
+  });
+
+  // Smile — row of spheres curving up
+  for (let i = 0; i < 7; i++) {
+    const t = (i / 6 - 0.5) * 0.36;
+    const sm = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), mouthMat);
+    sm.position.set(t, 0.38 + Math.abs(t) * 0.22, 0.41);
+    g.add(sm);
+  }
+
+  // Antenna
+  const antStalk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.24, 6), antMat);
+  antStalk.position.set(0.06, 0.86, 0.06);
+  antStalk.rotation.z = 0.18;
+  g.add(antStalk);
+  const antBall = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), antMat);
+  antBall.position.set(0.1, 0.99, 0.06);
+  g.add(antBall);
+
+  // Stubby little legs (4)
+  [[-0.2, 0.08], [0.2, 0.08], [-0.16, -0.18], [0.16, -0.18]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.18, 8), legMat);
+    leg.position.set(lx, 0.02, lz);
+    g.add(leg);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 7), legMat);
+    foot.scale.set(1, 0.6, 1.1);
+    foot.position.set(lx, -0.09, lz + 0.02);
+    g.add(foot);
+  });
+
+  // Tiny nub arms
+  [-0.42, 0.42].forEach((ax) => {
+    const arm = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), bodyMat);
+    arm.scale.set(1, 0.75, 0.75);
+    arm.position.set(ax, 0.42, 0.06);
+    g.add(arm);
+  });
+
+  setShadow(g, true, false);
+  return g;
+}
+
 function makePlayerMesh(charId: CharId): THREE.Group {
   const char = CHARACTERS.find((c) => c.id === charId) ?? CHARACTERS[0];
-  if (char.type === "cat") return makeCat(char.bodyColor, char.accentColor);
+  if (char.type === "cat")   return makeCat(char.bodyColor, char.accentColor);
+  if (char.type === "dog")   return makeDog(char.bodyColor, char.accentColor);
+  if (char.type === "pilbu") return makePilbu();
   return makeChicken({ bodyColor: char.bodyColor, wingColor: char.accentColor });
 }
 
@@ -880,8 +1056,36 @@ export default function GameScreen() {
   );
   const [selectedChar, setSelectedChar] = useState<CharId>("chicken_gold");
   const [showShop, setShowShop] = useState(false);
+  const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
+
+  // ── Load saved wallet + unlocks on first mount ────────────────────────────
+  useEffect(() => {
+    AsyncStorage.multiGet(["pollo_coins", "pollo_unlocked", "pollo_selected"])
+      .then(([coinsEntry, unlockedEntry, selectedEntry]) => {
+        if (coinsEntry[1]) setTotalCoins(parseInt(coinsEntry[1], 10) || 0);
+        if (unlockedEntry[1]) {
+          try {
+            const ids = JSON.parse(unlockedEntry[1]) as CharId[];
+            setUnlockedChars(new Set<CharId>(["chicken_gold", ...ids]));
+          } catch { /* ignore */ }
+        }
+        if (selectedEntry[1]) setSelectedChar(selectedEntry[1] as CharId);
+      })
+      .catch(() => {})
+      .finally(() => setSaveLoaded(true));
+  }, []);
+
+  // ── Save wallet + unlocks whenever they change (after initial load) ────────
+  useEffect(() => {
+    if (!saveLoaded) return;
+    AsyncStorage.multiSet([
+      ["pollo_coins",    String(totalCoins)],
+      ["pollo_unlocked", JSON.stringify([...unlockedChars])],
+      ["pollo_selected", selectedChar],
+    ]).catch(() => {});
+  }, [totalCoins, unlockedChars, selectedChar, saveLoaded]);
 
   const stateRef = useRef<GameStateRef>({
     playerX: 0,
