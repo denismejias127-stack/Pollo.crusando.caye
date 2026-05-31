@@ -1,4 +1,4 @@
-name: Generar APK de pollo abenturas
+Name: Generar APK de pollo abenturas
 
 on:
   workflow_dispatch:
@@ -16,10 +16,15 @@ jobs:
       with:
         node-version: 22
 
+    - name: Instalar pnpm
+      uses: pnpm/action-setup@v3
+      with:
+        version: 9  # Instala la versión de pnpm compatible con tu proyecto
+
     - name: Instalar Dependencias y Compilar
       run: |
-        npm install
-        npm run build --if-present
+        pnpm install
+        pnpm run build --if-present
 
     - name: Configurar entorno de Android (Java 21)
       uses: actions/setup-java@v4
@@ -29,9 +34,9 @@ jobs:
 
     - name: Inicializar Capacitor y Configurar Android
       run: |
-        npm install -g @capacitor/cli
-        npm install @capacitor/core @capacitor/android
-        npx cap init "ChatDanis" "com.danis.chatdanis" --web-dir=dist/public
+        pnpm add -g @capacitor/cli
+        pnpm add @capacitor/core @capacitor/android
+        npx cap init "Pollo Aventuras" "com.danis.polloaventuras" --web-dir=dist/public
         npx cap add android
         npx cap sync
 
@@ -64,4 +69,3 @@ jobs:
       with:
         name: apk-nueva-danis
         path: android/app/build/outputs/apk/debug/app-debug.apk
-
