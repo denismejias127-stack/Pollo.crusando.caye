@@ -5,6 +5,7 @@ import {
   Dimensions,
   PanResponder,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -105,7 +106,16 @@ interface GameStateRef {
   animId: number | null;
 }
 
-// ─── Colors ───────────────────────────────────────────────────────────────────
+// ─── Characters & Colors ──────────────────────────────────────────────────────
+const CHARACTERS = [
+  { id: "chicken_gold", name: "Pollo Dorado",   cost: 30,  emoji: "🐔", type: "chicken" as const, bodyColor: 0xffd700, accentColor: 0xf0c200 },
+  { id: "chicken_red",  name: "Pollo Rojo",      cost: 20,  emoji: "🐓", type: "chicken" as const, bodyColor: 0xe53935, accentColor: 0xb71c1c },
+  { id: "cat_yellow",   name: "Gato Amarillo",   cost: 100, emoji: "🐱", type: "cat"     as const, bodyColor: 0xffb300, accentColor: 0xe65100 },
+  { id: "cat_white",    name: "Gato Blanco",     cost: 150, emoji: "🤍", type: "cat"     as const, bodyColor: 0xf5f5f5, accentColor: 0xbdbdbd },
+  { id: "cat_gold",     name: "Gato Dorado",     cost: 200, emoji: "⭐", type: "cat"     as const, bodyColor: 0xffd700, accentColor: 0xff8f00 },
+] as const;
+type CharId = typeof CHARACTERS[number]["id"];
+
 const C = {
   sky: 0x87ceeb,
   horizon: 0xb8e0f7,
@@ -468,10 +478,11 @@ function makeTree(seed: number): THREE.Group {
   return g;
 }
 
-function makeChicken(): THREE.Group {
+interface ChickenOpts { bodyColor?: number; wingColor?: number; }
+function makeChicken(opts?: ChickenOpts): THREE.Group {
   const g = new THREE.Group();
-  const yMat  = new THREE.MeshLambertMaterial({ color: C.chicken });
-  const wMat  = new THREE.MeshLambertMaterial({ color: C.wing });
+  const yMat  = new THREE.MeshLambertMaterial({ color: opts?.bodyColor ?? C.chicken });
+  const wMat  = new THREE.MeshLambertMaterial({ color: opts?.wingColor ?? C.wing });
   const bMat  = new THREE.MeshLambertMaterial({ color: C.beak });
   const eMat  = new THREE.MeshLambertMaterial({ color: C.eye });
   const cMat  = new THREE.MeshLambertMaterial({ color: C.comb });
@@ -590,6 +601,118 @@ function makeChicken(): THREE.Group {
 
   setShadow(g, true, false);
   return g;
+}
+
+/** 3D cat model — used for cat characters */
+function makeCat(bodyColor: number, accentColor: number): THREE.Group {
+  const g = new THREE.Group();
+  const bodyMat   = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const accentMat = new THREE.MeshLambertMaterial({ color: accentColor });
+  const noseMat   = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
+  const eyeMat    = new THREE.MeshLambertMaterial({ color: 0x00c853 });
+  const pupilMat  = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const eyeWMat   = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const innerEar  = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
+  const bellyMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
+  // Body — round & squat
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.29, 10, 8), bodyMat);
+  body.scale.set(1.12, 1.0, 1.0);
+  body.position.y = 0.33;
+  g.add(body);
+
+  // Belly patch
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 7), bellyMat);
+  belly.scale.set(0.72, 0.88, 0.26);
+  belly.position.set(0, 0.29, 0.26);
+  g.add(belly);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bodyMat);
+  head.position.set(0, 0.71, 0.05);
+  g.add(head);
+
+  // Ears + inner ears
+  [-0.13, 0.13].forEach((ex) => {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 5), bodyMat);
+    ear.rotation.z = ex < 0 ? -0.22 : 0.22;
+    ear.position.set(ex, 0.91, 0.03);
+    g.add(ear);
+    const inn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), innerEar);
+    inn.rotation.z = ex < 0 ? -0.22 : 0.22;
+    inn.position.set(ex * 0.9, 0.91, 0.055);
+    g.add(inn);
+  });
+
+  // Eyes — almond (scaled sphere) + iris + slit pupil
+  [-0.12, 0.12].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), eyeWMat);
+    white.scale.set(1.3, 0.78, 0.65);
+    white.rotation.z = ex < 0 ? 0.22 : -0.22;
+    white.position.set(ex, 0.735, 0.215);
+    g.add(white);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.044, 7, 6), eyeMat);
+    iris.scale.set(1.2, 0.74, 0.75);
+    iris.rotation.z = ex < 0 ? 0.22 : -0.22;
+    iris.position.set(ex * 0.94, 0.735, 0.245);
+    g.add(iris);
+    // vertical slit pupil
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.055, 0.04), pupilMat);
+    pupil.position.set(ex * 0.88, 0.735, 0.262);
+    g.add(pupil);
+  });
+
+  // Nose — tiny pink heart-ish sphere
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.038, 6, 5), noseMat);
+  nose.scale.set(1.3, 0.72, 0.8);
+  nose.position.set(0, 0.693, 0.253);
+  g.add(nose);
+
+  // Whiskers (3 per side)
+  [-1, 1].forEach((side) => {
+    [0.01, -0.01, 0.035].forEach((wy) => {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.003, 0.26, 4), accentMat);
+      w.rotation.z = (Math.PI / 2) + side * wy * 2;
+      w.position.set(side * 0.18, 0.685 + wy, 0.22);
+      g.add(w);
+    });
+  });
+
+  // Tail — arc of spheres curling upward
+  for (let t = 0; t < 8; t++) {
+    const angle = (t / 7) * (Math.PI * 0.8);
+    const seg = new THREE.Mesh(
+      new THREE.SphereGeometry(0.065 - t * 0.005, 7, 6),
+      t >= 6 ? accentMat : bodyMat
+    );
+    seg.position.set(
+      -Math.sin(angle) * 0.26,
+      0.18 + Math.cos(angle) * 0.26 + t * 0.04,
+      -0.22 - t * 0.015
+    );
+    g.add(seg);
+  }
+
+  // 4 legs + paws
+  [[-0.17, 0.1], [0.17, 0.1], [-0.13, -0.15], [0.13, -0.15]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.22, 7), bodyMat);
+    leg.position.set(lx, 0.02, lz);
+    g.add(leg);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.074, 7, 6), accentMat);
+    paw.scale.set(1, 0.65, 1.1);
+    paw.position.set(lx, -0.1, lz);
+    g.add(paw);
+  });
+
+  setShadow(g, true, false);
+  return g;
+}
+
+/** Factory — creates the right 3D model for a character id */
+function makePlayerMesh(charId: CharId): THREE.Group {
+  const char = CHARACTERS.find((c) => c.id === charId) ?? CHARACTERS[0];
+  if (char.type === "cat") return makeCat(char.bodyColor, char.accentColor);
+  return makeChicken({ bodyColor: char.bodyColor, wingColor: char.accentColor });
 }
 
 /** Spinning gold coin collectible */
@@ -751,6 +874,14 @@ export default function GameScreen() {
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
+  const [totalCoins, setTotalCoins] = useState(0);
+  const [unlockedChars, setUnlockedChars] = useState<Set<CharId>>(
+    () => new Set<CharId>(["chicken_gold"])
+  );
+  const [selectedChar, setSelectedChar] = useState<CharId>("chicken_gold");
+  const [showShop, setShowShop] = useState(false);
+  const selectedCharRef = useRef<CharId>("chicken_gold");
+  selectedCharRef.current = selectedChar;
 
   const stateRef = useRef<GameStateRef>({
     playerX: 0,
@@ -979,7 +1110,7 @@ export default function GameScreen() {
       groundPlane.receiveShadow = true;
       scene.add(groundPlane);
 
-      const chicken = makeChicken();
+      const chicken = makePlayerMesh(selectedCharRef.current);
       chicken.position.set(0, 0, 0);
       scene.add(chicken);
       s.playerMesh = chicken;
@@ -1142,6 +1273,8 @@ export default function GameScreen() {
   const restart = useCallback(() => {
     const s = stateRef.current;
     if (!s.scene || !s.playerMesh) return;
+    // Accumulate coins from this round into the persistent wallet
+    setTotalCoins((prev) => prev + s.coinScore);
     for (const row of s.rows) {
       s.scene.remove(row.mesh);
       row.cars.forEach((c) => s.scene!.remove(c.mesh));
@@ -1149,6 +1282,13 @@ export default function GameScreen() {
     for (const coin of s.coins) {
       if (!coin.collected) s.scene.remove(coin.mesh);
     }
+    // Swap player mesh to match selected character
+    s.scene.remove(s.playerMesh);
+    const newMesh = makePlayerMesh(selectedCharRef.current);
+    newMesh.position.set(0, 0, 0);
+    s.scene.add(newMesh);
+    s.playerMesh = newMesh;
+
     s.rows = [];
     s.coins = [];
     s.maxRowIdx = 0;
@@ -1159,8 +1299,6 @@ export default function GameScreen() {
     s.coinScore = 0;
     s.dead = false;
     s.hop = { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 };
-    s.playerMesh.position.set(0, 0, 0);
-    s.playerMesh.rotation.y = 0;
     generateRows(VISIBLE_ROWS);
     setScore(0);
     setCoins(0);
@@ -1230,32 +1368,137 @@ export default function GameScreen() {
       )}
 
       {/* Start screen */}
-      {!started && (
+      {!started && !showShop && (
         <View style={styles.overlay}>
-          <Text style={styles.titleEmoji}>🐔</Text>
+          <Text style={styles.titleEmoji}>
+            {CHARACTERS.find((c) => c.id === selectedChar)?.emoji ?? "🐔"}
+          </Text>
           <Text style={styles.gameName}>Pollo Crossy</Text>
           <Text style={styles.subtitle}>Cruza la calle sin que te atropellen</Text>
+          {totalCoins > 0 && (
+            <View style={styles.walletRow}>
+              <Text style={styles.walletText}>💰 {totalCoins} monedas</Text>
+            </View>
+          )}
           <TouchableOpacity
             style={styles.startBtn}
             onPress={() => setStarted(true)}
           >
             <Text style={styles.startBtnText}>JUGAR</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shopBtn}
+            onPress={() => setShowShop(true)}
+          >
+            <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
+          </TouchableOpacity>
         </View>
       )}
 
       {/* Game over */}
-      {gameOver && (
+      {gameOver && !showShop && (
         <View style={styles.overlay}>
           <Text style={styles.gameOverTitle}>¡Oh no!</Text>
-          <Text style={styles.gameOverSub}>¡El pollo fue atropellado!</Text>
+          <Text style={styles.gameOverSub}>¡Fue atropellado!</Text>
           <Text style={styles.gameOverScore}>{score}</Text>
           <Text style={styles.gameOverLabel}>filas cruzadas</Text>
           <View style={styles.gameOverCoins}>
-            <Text style={styles.gameOverCoinText}>🪙 {coins} monedas</Text>
+            <Text style={styles.gameOverCoinText}>🪙 {coins} monedas esta ronda</Text>
+          </View>
+          <View style={styles.gameOverCoins}>
+            <Text style={styles.gameOverCoinText}>💰 {totalCoins + coins} total</Text>
           </View>
           <TouchableOpacity style={styles.startBtn} onPress={restart}>
             <Text style={styles.startBtnText}>REINTENTAR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shopBtn}
+            onPress={() => setShowShop(true)}
+          >
+            <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Character Shop overlay */}
+      {showShop && (
+        <View style={styles.shopOverlay}>
+          <Text style={styles.shopTitle}>🛒  PERSONAJES</Text>
+          <Text style={styles.shopWallet}>💰 {totalCoins} monedas</Text>
+          <ScrollView
+            style={styles.shopScroll}
+            contentContainerStyle={styles.shopList}
+            showsVerticalScrollIndicator={false}
+          >
+            {CHARACTERS.map((char) => {
+              const owned    = unlockedChars.has(char.id);
+              const selected = selectedChar === char.id;
+              const canBuy   = !owned && totalCoins >= char.cost;
+              return (
+                <View
+                  key={char.id}
+                  style={[
+                    styles.charCard,
+                    selected && styles.charCardSelected,
+                  ]}
+                >
+                  <Text style={styles.charEmoji}>{char.emoji}</Text>
+                  <View style={styles.charInfo}>
+                    <Text style={styles.charName}>{char.name}</Text>
+                    {owned ? (
+                      <Text style={styles.charOwned}>✓ Desbloqueado</Text>
+                    ) : (
+                      <Text style={styles.charCost}>🪙 {char.cost} monedas</Text>
+                    )}
+                  </View>
+                  {owned ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.charBtn,
+                        selected ? styles.charBtnActive : styles.charBtnSelect,
+                      ]}
+                      onPress={() => {
+                        setSelectedChar(char.id);
+                        setShowShop(false);
+                      }}
+                    >
+                      <Text style={styles.charBtnText}>
+                        {selected ? "✓ USANDO" : "USAR"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.charBtn,
+                        canBuy ? styles.charBtnBuy : styles.charBtnLocked,
+                      ]}
+                      onPress={() => {
+                        if (!canBuy) return;
+                        setTotalCoins((prev) => prev - char.cost);
+                        setUnlockedChars((prev) => {
+                          const next = new Set(prev);
+                          next.add(char.id);
+                          return next;
+                        });
+                        setSelectedChar(char.id);
+                        setShowShop(false);
+                      }}
+                      disabled={!canBuy}
+                    >
+                      <Text style={styles.charBtnText}>
+                        {canBuy ? "COMPRAR" : "🔒"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity
+            style={styles.shopBackBtn}
+            onPress={() => setShowShop(false)}
+          >
+            <Text style={styles.shopBackText}>← VOLVER</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1447,6 +1690,135 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#ffffffaa",
     marginBottom: 8,
+  },
+  walletRow: {
+    backgroundColor: "rgba(255,215,0,0.18)",
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  walletText: {
+    color: "#FFD700",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  shopBtn: {
+    marginTop: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 32,
+    paddingHorizontal: 36,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  shopBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 1.5,
+  },
+  shopOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(10,10,30,0.97)",
+    alignItems: "center",
+    paddingTop: Platform.OS === "web" ? 60 : 52,
+    paddingBottom: 24,
+  },
+  shopTitle: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#FFD700",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  shopWallet: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#FFD700",
+    marginBottom: 16,
+  },
+  shopScroll: {
+    width: "100%",
+  },
+  shopList: {
+    paddingHorizontal: 20,
+    gap: 12,
+    paddingBottom: 12,
+  },
+  charCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  charCardSelected: {
+    borderColor: "#FFD700",
+    backgroundColor: "rgba(255,215,0,0.12)",
+  },
+  charEmoji: {
+    fontSize: 40,
+    marginRight: 14,
+  },
+  charInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  charName: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  charOwned: {
+    color: "#69f0ae",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  charCost: {
+    color: "#FFD700",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  charBtn: {
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minWidth: 86,
+    alignItems: "center",
+  },
+  charBtnActive: {
+    backgroundColor: "#FFD700",
+  },
+  charBtnSelect: {
+    backgroundColor: "#4caf50",
+  },
+  charBtnBuy: {
+    backgroundColor: "#1976d2",
+  },
+  charBtnLocked: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  charBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  shopBackBtn: {
+    marginTop: 16,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 24,
+    paddingHorizontal: 36,
+    paddingVertical: 13,
+  },
+  shopBackText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
   dpad: {
     position: "absolute",
