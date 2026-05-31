@@ -1392,16 +1392,19 @@ export default function GameScreen() {
               s.playerMesh.position.set(s.playerX, 0, -s.playerZ);
             }
             checkCollision();
-            // ── Collect any coin at landing position ──
+            // ── Collect coins on the entire landed row ──
+            let rowCoins = 0;
             for (const coin of s.coins) {
-              if (!coin.collected && coin.rowIdx === s.playerZ &&
-                  Math.abs(coin.x - s.playerX) < 0.55) {
+              if (!coin.collected && coin.rowIdx === s.playerZ) {
                 coin.collected = true;
                 s.scene!.remove(coin.mesh);
-                s.coinScore++;
-                setCoinsRef.current(s.coinScore);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                rowCoins++;
               }
+            }
+            if (rowCoins > 0) {
+              s.coinScore += rowCoins;
+              setCoinsRef.current(s.coinScore);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             }
           }
         }
@@ -1473,6 +1476,9 @@ export default function GameScreen() {
         s.maxScore = newZ;
         s.score = newZ;
         setScoreRef.current(newZ);
+        // +5 monedas por cada fila nueva cruzada hacia adelante
+        s.coinScore += 5;
+        setCoinsRef.current(s.coinScore);
       }
       generateRows(newZ + SAFE_AHEAD);
       pruneRows();
