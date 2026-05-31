@@ -1,4 +1,4 @@
-Name: Generar APK de pollo abenturas
+name: Generar APK de pollo abenturas
 
 on:
   workflow_dispatch:
