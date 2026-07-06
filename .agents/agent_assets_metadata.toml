@@ -17,3 +17,15 @@ id = "bl_hWqijfQubTgiYFsRZA"
 uri = "file://artifacts/mobile/assets/sounds/music.mp3"
 type = "audio"
 title = "game_music_loop"
+
+[[outputs]]
+id = "vrnKIsdnGBWr9ZPBDm50F"
+uri = "file://artifacts/mobile/assets/sounds/traffic.mp3"
+type = "audio"
+title = "traffic_ambience"
+
+[[outputs]]
+id = "1RwKEKlizI4qvXvEeiAZd"
+uri = "file://artifacts/mobile/assets/sounds/crash.mp3"
+type = "audio"
+title = "crash_death"

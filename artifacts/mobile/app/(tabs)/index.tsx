@@ -1064,23 +1064,31 @@ export default function GameScreen() {
   // ── Audio: coin SFX + looping background music ────────────────────────────
   const coinPlayer = useAudioPlayer(require("../../assets/sounds/coin.mp3"));
   const musicPlayer = useAudioPlayer(require("../../assets/sounds/music.mp3"));
+  const trafficPlayer = useAudioPlayer(require("../../assets/sounds/traffic.mp3"));
+  const crashPlayer = useAudioPlayer(require("../../assets/sounds/crash.mp3"));
   const coinPlayerRef = useRef(coinPlayer);
   coinPlayerRef.current = coinPlayer;
+  const crashPlayerRef = useRef(crashPlayer);
+  crashPlayerRef.current = crashPlayer;
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
     musicPlayer.loop = true;
     musicPlayer.volume = 0.35;
-  }, [musicPlayer]);
+    trafficPlayer.loop = true;
+    trafficPlayer.volume = 0.25;
+  }, [musicPlayer, trafficPlayer]);
 
-  // Play music while actively playing, pause it on start/game-over screens
+  // Play music + traffic ambience while actively playing, pause on other screens
   useEffect(() => {
     if (started && !gameOver && !showShop) {
       musicPlayer.play();
+      trafficPlayer.play();
     } else {
       musicPlayer.pause();
+      trafficPlayer.pause();
     }
-  }, [started, gameOver, showShop, musicPlayer]);
+  }, [started, gameOver, showShop, musicPlayer, trafficPlayer]);
 
   const playCoinSound = useCallback(() => {
     const p = coinPlayerRef.current;
@@ -1089,6 +1097,14 @@ export default function GameScreen() {
   }, []);
   const playCoinSoundRef = useRef(playCoinSound);
   playCoinSoundRef.current = playCoinSound;
+
+  const playCrashSound = useCallback(() => {
+    const p = crashPlayerRef.current;
+    p.seekTo(0);
+    p.play();
+  }, []);
+  const playCrashSoundRef = useRef(playCrashSound);
+  playCrashSoundRef.current = playCrashSound;
 
   // ── Load saved wallet + unlocks on first mount ────────────────────────────
   useEffect(() => {
@@ -1276,6 +1292,7 @@ export default function GameScreen() {
         setTotalCoinsRef.current((prev) => prev + s.coinScore);
         s.coinScore = 0;
         setGameOverRef.current(true);
+        playCrashSoundRef.current();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
@@ -1387,6 +1404,7 @@ export default function GameScreen() {
                   setTotalCoinsRef.current((prev) => prev + s.coinScore);
                   s.coinScore = 0;
                   setGameOverRef.current(true);
+                  playCrashSoundRef.current();
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                   break;
                 }
