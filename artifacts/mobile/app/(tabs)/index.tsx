@@ -1066,10 +1066,16 @@ export default function GameScreen() {
   const musicPlayer = useAudioPlayer(require("../../assets/sounds/music.mp3"));
   const trafficPlayer = useAudioPlayer(require("../../assets/sounds/traffic.mp3"));
   const crashPlayer = useAudioPlayer(require("../../assets/sounds/crash.mp3"));
+  const hopPlayer = useAudioPlayer(require("../../assets/sounds/hop.mp3"));
+  const characterPlayer = useAudioPlayer(require("../../assets/sounds/character.mp3"));
   const coinPlayerRef = useRef(coinPlayer);
   coinPlayerRef.current = coinPlayer;
   const crashPlayerRef = useRef(crashPlayer);
   crashPlayerRef.current = crashPlayer;
+  const hopPlayerRef = useRef(hopPlayer);
+  hopPlayerRef.current = hopPlayer;
+  const characterPlayerRef = useRef(characterPlayer);
+  characterPlayerRef.current = characterPlayer;
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
@@ -1077,18 +1083,22 @@ export default function GameScreen() {
     musicPlayer.volume = 0.35;
     trafficPlayer.loop = true;
     trafficPlayer.volume = 0.25;
-  }, [musicPlayer, trafficPlayer]);
+    characterPlayer.volume = 0.8;
+  }, [musicPlayer, trafficPlayer, characterPlayer]);
 
-  // Play music + traffic ambience while actively playing, pause on other screens
+  // Music plays continuously from the moment the app opens.
+  useEffect(() => {
+    musicPlayer.play();
+  }, [musicPlayer]);
+
+  // Traffic ambience only while actively playing a round
   useEffect(() => {
     if (started && !gameOver && !showShop) {
-      musicPlayer.play();
       trafficPlayer.play();
     } else {
-      musicPlayer.pause();
       trafficPlayer.pause();
     }
-  }, [started, gameOver, showShop, musicPlayer, trafficPlayer]);
+  }, [started, gameOver, showShop, trafficPlayer]);
 
   const playCoinSound = useCallback(() => {
     const p = coinPlayerRef.current;
@@ -1105,6 +1115,22 @@ export default function GameScreen() {
   }, []);
   const playCrashSoundRef = useRef(playCrashSound);
   playCrashSoundRef.current = playCrashSound;
+
+  const playHopSound = useCallback(() => {
+    const p = hopPlayerRef.current;
+    p.seekTo(0);
+    p.play();
+  }, []);
+  const playHopSoundRef = useRef(playHopSound);
+  playHopSoundRef.current = playHopSound;
+
+  const playCharacterSound = useCallback(() => {
+    const p = characterPlayerRef.current;
+    p.seekTo(0);
+    p.play();
+  }, []);
+  const playCharacterSoundRef = useRef(playCharacterSound);
+  playCharacterSoundRef.current = playCharacterSound;
 
   // ── Load saved wallet + unlocks on first mount ────────────────────────────
   useEffect(() => {
@@ -1510,6 +1536,9 @@ export default function GameScreen() {
       const newX = Math.max(-BOARD_HALF, Math.min(BOARD_HALF, s.playerX + dx));
       const newZ = Math.max(0, s.playerZ + dz);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      playHopSoundRef.current();
+      // Character "voice" chirps occasionally so it's not overbearing
+      if (Math.random() < 0.25) playCharacterSoundRef.current();
       s.hop = {
         active: true,
         fromX: s.playerX,
