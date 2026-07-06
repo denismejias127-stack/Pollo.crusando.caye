@@ -29,3 +29,15 @@ id = "1RwKEKlizI4qvXvEeiAZd"
 uri = "file://artifacts/mobile/assets/sounds/crash.mp3"
 type = "audio"
 title = "crash_death"
+
+[[outputs]]
+id = "gVa1mVhOc5Dhfyw5jSxNJ"
+uri = "file://artifacts/mobile/assets/sounds/hop.mp3"
+type = "audio"
+title = "hop_jump"
+
+[[outputs]]
+id = "oHtoRKfJBU84GaPViz8iR"
+uri = "file://artifacts/mobile/assets/sounds/character.mp3"
+type = "audio"
+title = "character_voice"
