@@ -1392,19 +1392,16 @@ export default function GameScreen() {
               s.playerMesh.position.set(s.playerX, 0, -s.playerZ);
             }
             checkCollision();
-            // ── Collect coins on the entire landed row ──
-            let rowCoins = 0;
+            // ── Collect only the coin at the exact landing spot ──
             for (const coin of s.coins) {
-              if (!coin.collected && coin.rowIdx === s.playerZ) {
+              if (!coin.collected && coin.rowIdx === s.playerZ &&
+                  Math.abs(coin.x - s.playerX) < 0.55) {
                 coin.collected = true;
                 s.scene!.remove(coin.mesh);
-                rowCoins++;
+                s.coinScore++;
+                setCoinsRef.current(s.coinScore);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               }
-            }
-            if (rowCoins > 0) {
-              s.coinScore += rowCoins;
-              setCoinsRef.current(s.coinScore);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             }
           }
         }
