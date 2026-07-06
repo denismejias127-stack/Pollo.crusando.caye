@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -1060,6 +1061,35 @@ export default function GameScreen() {
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
 
+  // ── Audio: coin SFX + looping background music ────────────────────────────
+  const coinPlayer = useAudioPlayer(require("../../assets/sounds/coin.mp3"));
+  const musicPlayer = useAudioPlayer(require("../../assets/sounds/music.mp3"));
+  const coinPlayerRef = useRef(coinPlayer);
+  coinPlayerRef.current = coinPlayer;
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    musicPlayer.loop = true;
+    musicPlayer.volume = 0.35;
+  }, [musicPlayer]);
+
+  // Play music while actively playing, pause it on start/game-over screens
+  useEffect(() => {
+    if (started && !gameOver && !showShop) {
+      musicPlayer.play();
+    } else {
+      musicPlayer.pause();
+    }
+  }, [started, gameOver, showShop, musicPlayer]);
+
+  const playCoinSound = useCallback(() => {
+    const p = coinPlayerRef.current;
+    p.seekTo(0);
+    p.play();
+  }, []);
+  const playCoinSoundRef = useRef(playCoinSound);
+  playCoinSoundRef.current = playCoinSound;
+
   // ── Load saved wallet + unlocks on first mount ────────────────────────────
   useEffect(() => {
     AsyncStorage.multiGet(["pollo_coins", "pollo_unlocked", "pollo_selected"])
@@ -1400,6 +1430,7 @@ export default function GameScreen() {
                 s.scene!.remove(coin.mesh);
                 s.coinScore++;
                 setCoinsRef.current(s.coinScore);
+                playCoinSoundRef.current();
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               }
             }
