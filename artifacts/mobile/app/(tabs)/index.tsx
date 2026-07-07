@@ -1111,18 +1111,16 @@ export default function GameScreen() {
   characterPlayerRef.current = characterPlayer;
 
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
-    musicPlayer.loop = true;
-    musicPlayer.volume = 0.35;
-    trafficPlayer.loop = true;
-    trafficPlayer.volume = 0.25;
-    characterPlayer.volume = 0.8;
+    (async () => {
+      await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+      musicPlayer.loop = true;
+      musicPlayer.volume = 0.45;
+      trafficPlayer.loop = true;
+      trafficPlayer.volume = 0.25;
+      characterPlayer.volume = 0.8;
+      musicPlayer.play();
+    })();
   }, [musicPlayer, trafficPlayer, characterPlayer]);
-
-  // Music plays continuously from the moment the app opens
-  useEffect(() => {
-    musicPlayer.play();
-  }, [musicPlayer]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
@@ -1625,9 +1623,12 @@ export default function GameScreen() {
         s.maxScore = newZ;
         s.score = newZ;
         setScoreRef.current(newZ);
-        // +5 monedas por cada fila nueva cruzada hacia adelante
-        s.coinScore += 5;
-        setCoinsRef.current(s.coinScore);
+        // +5 monedas solo al cruzar una carretera
+        const crossedRow = s.rows.find((r) => r.rowIdx === newZ);
+        if (crossedRow?.kind === "road") {
+          s.coinScore += 5;
+          setCoinsRef.current(s.coinScore);
+        }
       }
       generateRows(newZ + SAFE_AHEAD);
       pruneRows();
