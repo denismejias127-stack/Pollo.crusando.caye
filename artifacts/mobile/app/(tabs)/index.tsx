@@ -1532,6 +1532,13 @@ export default function GameScreen() {
           }
         }
 
+        // ── Idle animation: gentle sway when standing still ──
+        if (!s.hop.active && s.playerMesh && !s.dead) {
+          const idleT = now * 0.0022;
+          s.playerMesh.rotation.z = Math.sin(idleT) * 0.06;
+          s.playerMesh.position.y = Math.sin(idleT * 1.3) * 0.015;
+        }
+
         // ── Coin spin + bob animation ──
         for (const coin of s.coins) {
           if (!coin.collected) {
