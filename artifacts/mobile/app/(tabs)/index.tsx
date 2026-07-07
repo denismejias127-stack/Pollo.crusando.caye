@@ -1090,6 +1090,7 @@ export default function GameScreen() {
   );
   const [selectedChar, setSelectedChar] = useState<CharId>("chicken_gold");
   const [showShop, setShowShop] = useState(false);
+  const [muted, setMuted] = useState(false);
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
@@ -1128,6 +1129,12 @@ export default function GameScreen() {
       musicPlayer.play();
     }
   }, [musicStatus.isLoaded, musicStatus.playing, musicPlayer]);
+
+  // Mute / unmute all background audio
+  useEffect(() => {
+    musicPlayer.volume = muted ? 0 : 0.45;
+    trafficPlayer.volume = muted ? 0 : 0.25;
+  }, [muted, musicPlayer, trafficPlayer]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
@@ -1747,6 +1754,15 @@ export default function GameScreen() {
         </View>
       )}
 
+      {/* Mute toggle — always visible */}
+      <TouchableOpacity
+        style={styles.muteBtn}
+        onPress={() => setMuted((m) => !m)}
+        activeOpacity={0.75}
+      >
+        <Text style={styles.muteBtnText}>{muted ? "🔇" : "🔊"}</Text>
+      </TouchableOpacity>
+
       {/* Camera toggle */}
       {started && !gameOver && (
         <TouchableOpacity
@@ -2012,6 +2028,20 @@ const styles = StyleSheet.create({
     color: "#FFD700",
     fontSize: 24,
     fontWeight: "800",
+  },
+  muteBtn: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 80 : 56,
+    left: 16,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    zIndex: 20,
+  },
+  muteBtnText: {
+    fontSize: 22,
   },
   camBtn: {
     position: "absolute",

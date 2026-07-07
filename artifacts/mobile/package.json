@@ -57,7 +57,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "expo-audio": "^57.0.0",
+    "expo-audio": "^1.1.1",
     "expo-gl": "^56.0.5",
     "three": "^0.184.0"
   }
