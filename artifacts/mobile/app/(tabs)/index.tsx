@@ -102,6 +102,7 @@ interface GameStateRef {
     startMs: number;
   };
   dead: boolean;
+  deadMs: number;
   score: number;
   maxScore: number;
   coinScore: number;
@@ -1204,6 +1205,7 @@ export default function GameScreen() {
     maxRowIdx: 0,
     hop: { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 },
     dead: false,
+    deadMs: 0,
     score: 0,
     maxScore: 0,
     coinScore: 0,
@@ -1347,6 +1349,7 @@ export default function GameScreen() {
       const half = car.width / 2 + 0.25;
       if (Math.abs(car.x - s.playerX) < half) {
         s.dead = true;
+        s.deadMs = performance.now();
         setTotalCoinsRef.current((prev) => prev + s.coinScore);
         s.coinScore = 0;
         setGameOverRef.current(true);
@@ -1459,6 +1462,7 @@ export default function GameScreen() {
                 // player half-width 0.26, car half-width = car.width/2
                 if (Math.abs(car.x - s.playerX) < car.width / 2 + 0.26) {
                   s.dead = true;
+                  s.deadMs = performance.now();
                   setTotalCoinsRef.current((prev) => prev + s.coinScore);
                   s.coinScore = 0;
                   setGameOverRef.current(true);
@@ -1492,7 +1496,7 @@ export default function GameScreen() {
             // ── Walk animation: swing legs during movement ──
             const legs = s.playerMesh.userData.legs as THREE.Group[] | undefined;
             if (legs && legs.length > 0) {
-              const swing = Math.sin(t * Math.PI * 3) * 0.55;
+              const swing = Math.sin(t * Math.PI * 4) * 0.85;
               if (legs.length >= 4) {
                 // Diagonal gait: FL+BR together, FR+BL together
                 legs[0].rotation.x =  swing;  // front-left
@@ -1504,6 +1508,8 @@ export default function GameScreen() {
                 legs[0].rotation.x =  swing;
                 legs[1].rotation.x = -swing;
               }
+              // Subtle body rock side-to-side while stepping
+              s.playerMesh.rotation.z = Math.sin(t * Math.PI * 4) * 0.07;
             }
           }
           if (t >= 1) {
@@ -1532,8 +1538,18 @@ export default function GameScreen() {
           }
         }
 
+        // ── Death squash animation ──
+        if (s.dead && s.playerMesh) {
+          const dt2 = Math.min((now - s.deadMs) / 350, 1);
+          const squashY = 1 - dt2 * 0.82;         // flatten to 18% height
+          const squashXZ = 1 + dt2 * 0.9;         // spread out sideways
+          const spin = dt2 * Math.PI * 0.4;        // slight rotation on impact
+          s.playerMesh.scale.set(squashXZ * 0.48, squashY * 0.48, squashXZ * 0.48);
+          s.playerMesh.rotation.z = spin;
+          s.playerMesh.position.y = -dt2 * 0.05;
+        }
         // ── Idle animation: gentle sway when standing still ──
-        if (!s.hop.active && s.playerMesh && !s.dead) {
+        else if (!s.hop.active && s.playerMesh && !s.dead) {
           const idleT = now * 0.0022;
           s.playerMesh.rotation.z = Math.sin(idleT) * 0.06;
           s.playerMesh.position.y = Math.sin(idleT * 1.3) * 0.015;
@@ -1674,7 +1690,13 @@ export default function GameScreen() {
     s.maxScore = 0;
     s.coinScore = 0;
     s.dead = false;
+    s.deadMs = 0;
     s.hop = { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 };
+    if (s.playerMesh) {
+      s.playerMesh.scale.setScalar(0.48);
+      s.playerMesh.rotation.z = 0;
+      s.playerMesh.position.y = 0;
+    }
     generateRows(VISIBLE_ROWS);
     setScore(0);
     setCoins(0);
