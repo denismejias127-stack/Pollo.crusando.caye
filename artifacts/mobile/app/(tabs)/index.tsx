@@ -608,104 +608,107 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
   return g;
 }
 
-/** 3D cat model — used for cat characters */
+/** 3D cat model — quadruped with horizontal body */
 function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   const g = new THREE.Group();
-  const bodyMat   = new THREE.MeshLambertMaterial({ color: bodyColor });
-  const accentMat = new THREE.MeshLambertMaterial({ color: accentColor });
-  const noseMat   = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
-  const eyeMat    = new THREE.MeshLambertMaterial({ color: 0x00c853 });
-  const pupilMat  = new THREE.MeshLambertMaterial({ color: 0x111111 });
-  const eyeWMat   = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const innerEar  = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
-  const bellyMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const bodyMat  = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const accMat   = new THREE.MeshLambertMaterial({ color: accentColor });
+  const noseMat  = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
+  const eyeMat   = new THREE.MeshLambertMaterial({ color: 0x22cc66 });
+  const pupilMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const eyeWMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const innerEar = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
+  const bellyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
 
-  // Body — round & squat
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.29, 10, 8), bodyMat);
-  body.scale.set(1.12, 1.0, 1.0);
-  body.position.y = 0.33;
+  // ── BODY — horizontal pill: wide z (front-back), squat y ──
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), bodyMat);
+  body.scale.set(0.88, 0.72, 1.38);
+  body.position.set(0, 0.28, 0);
   g.add(body);
 
-  // Belly patch
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 7), bellyMat);
-  belly.scale.set(0.72, 0.88, 0.26);
-  belly.position.set(0, 0.29, 0.26);
+  // Belly patch (underside)
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), bellyMat);
+  belly.scale.set(0.7, 0.4, 1.1);
+  belly.position.set(0, 0.14, 0);
   g.add(belly);
 
-  // Head
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bodyMat);
-  head.position.set(0, 0.71, 0.05);
+  // ── NECK — short cylinder connecting body to head ──
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.15, 7), bodyMat);
+  neck.rotation.x = -0.55;
+  neck.position.set(0, 0.35, 0.28);
+  g.add(neck);
+
+  // ── HEAD — round, at front (+z) ──
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), bodyMat);
+  head.position.set(0, 0.44, 0.42);
   g.add(head);
 
   // Ears + inner ears
-  [-0.13, 0.13].forEach((ex) => {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 5), bodyMat);
-    ear.rotation.z = ex < 0 ? -0.22 : 0.22;
-    ear.position.set(ex, 0.91, 0.03);
+  [-0.12, 0.12].forEach((ex) => {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 5), bodyMat);
+    ear.rotation.z = ex < 0 ? -0.18 : 0.18;
+    ear.position.set(ex, 0.62, 0.41);
     g.add(ear);
-    const inn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), innerEar);
-    inn.rotation.z = ex < 0 ? -0.22 : 0.22;
-    inn.position.set(ex * 0.9, 0.91, 0.055);
+    const inn = new THREE.Mesh(new THREE.ConeGeometry(0.044, 0.11, 5), innerEar);
+    inn.rotation.z = ex < 0 ? -0.18 : 0.18;
+    inn.position.set(ex * 0.9, 0.62, 0.425);
     g.add(inn);
   });
 
-  // Eyes — almond (scaled sphere) + iris + slit pupil
-  [-0.12, 0.12].forEach((ex) => {
-    const white = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), eyeWMat);
-    white.scale.set(1.3, 0.78, 0.65);
-    white.rotation.z = ex < 0 ? 0.22 : -0.22;
-    white.position.set(ex, 0.735, 0.215);
+  // Eyes — almond with slit pupil
+  [-0.1, 0.1].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.058, 8, 6), eyeWMat);
+    white.scale.set(1.25, 0.76, 0.6);
+    white.position.set(ex, 0.48, 0.6);
     g.add(white);
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.044, 7, 6), eyeMat);
-    iris.scale.set(1.2, 0.74, 0.75);
-    iris.rotation.z = ex < 0 ? 0.22 : -0.22;
-    iris.position.set(ex * 0.94, 0.735, 0.245);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), eyeMat);
+    iris.scale.set(1.1, 0.72, 0.65);
+    iris.position.set(ex, 0.48, 0.625);
     g.add(iris);
-    // vertical slit pupil
-    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.055, 0.04), pupilMat);
-    pupil.position.set(ex * 0.88, 0.735, 0.262);
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.05, 0.03), pupilMat);
+    pupil.position.set(ex, 0.48, 0.638);
     g.add(pupil);
   });
 
-  // Nose — tiny pink heart-ish sphere
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.038, 6, 5), noseMat);
-  nose.scale.set(1.3, 0.72, 0.8);
-  nose.position.set(0, 0.693, 0.253);
+  // Nose
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 5), noseMat);
+  nose.scale.set(1.3, 0.7, 0.8);
+  nose.position.set(0, 0.435, 0.618);
   g.add(nose);
 
-  // Whiskers (3 per side)
+  // Whiskers
   [-1, 1].forEach((side) => {
-    [0.01, -0.01, 0.035].forEach((wy) => {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.003, 0.26, 4), accentMat);
-      w.rotation.z = (Math.PI / 2) + side * wy * 2;
-      w.position.set(side * 0.18, 0.685 + wy, 0.22);
+    [-0.02, 0.02, 0.048].forEach((wy) => {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.002, 0.24, 4), accMat);
+      w.rotation.z = Math.PI / 2 + side * wy * 1.8;
+      w.position.set(side * 0.19, 0.428 + wy, 0.59);
       g.add(w);
     });
   });
 
-  // Tail — arc of spheres curling upward
-  for (let t = 0; t < 8; t++) {
-    const angle = (t / 7) * (Math.PI * 0.8);
+  // ── TAIL — arc curling up from the back (-z) ──
+  for (let t = 0; t < 9; t++) {
+    const angle = (t / 8) * (Math.PI * 0.9);
     const seg = new THREE.Mesh(
-      new THREE.SphereGeometry(0.065 - t * 0.005, 7, 6),
-      t >= 6 ? accentMat : bodyMat
+      new THREE.SphereGeometry(0.062 - t * 0.004, 7, 6),
+      t >= 7 ? accMat : bodyMat
     );
     seg.position.set(
-      -Math.sin(angle) * 0.26,
-      0.18 + Math.cos(angle) * 0.26 + t * 0.04,
-      -0.22 - t * 0.015
+      0,
+      0.18 + Math.sin(angle) * 0.28 + t * 0.025,
+      -0.32 - Math.cos(angle) * 0.28 - t * 0.01
     );
     g.add(seg);
   }
 
-  // 4 legs + paws
-  [[-0.17, 0.1], [0.17, 0.1], [-0.13, -0.15], [0.13, -0.15]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.22, 7), bodyMat);
-    leg.position.set(lx, 0.02, lz);
+  // ── 4 LEGS — front pair at +z, back pair at -z ──
+  [[-0.15, 0.22], [0.15, 0.22], [-0.14, -0.22], [0.14, -0.22]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.042, 0.26, 7), bodyMat);
+    leg.position.set(lx, 0.04, lz);
     g.add(leg);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.074, 7, 6), accentMat);
-    paw.scale.set(1, 0.65, 1.1);
-    paw.position.set(lx, -0.1, lz);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.068, 7, 6), accMat);
+    paw.scale.set(1.1, 0.55, 1.2);
+    paw.position.set(lx, -0.11, lz + (lz > 0 ? 0.04 : -0.02));
     g.add(paw);
   });
 
@@ -713,92 +716,104 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   return g;
 }
 
-/** 3D dog model */
+/** 3D dog model — quadruped with horizontal body */
 function makeDog(bodyColor: number, accentColor: number): THREE.Group {
   const g = new THREE.Group();
-  const bodyMat   = new THREE.MeshLambertMaterial({ color: bodyColor });
-  const accentMat = new THREE.MeshLambertMaterial({ color: accentColor });
-  const noseMat   = new THREE.MeshLambertMaterial({ color: 0x111111 });
-  const eyeMat    = new THREE.MeshLambertMaterial({ color: 0x111111 });
-  const eyeWMat   = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const bodyMat  = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const accMat   = new THREE.MeshLambertMaterial({ color: accentColor });
+  const noseMat  = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const eyeMat   = new THREE.MeshLambertMaterial({ color: 0x5d3a1a });
+  const eyeWMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const tongueMat = new THREE.MeshLambertMaterial({ color: 0xff4081 });
-  const bellMat   = new THREE.MeshLambertMaterial({ color: 0xfff8e1 });
+  const bellyMat = new THREE.MeshLambertMaterial({ color: 0xfff8e1 });
 
-  // Body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), bodyMat);
-  body.scale.set(1.18, 0.98, 1.05);
-  body.position.y = 0.34;
+  // ── BODY — horizontal barrel: longer z, squat y ──
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 8), bodyMat);
+  body.scale.set(0.95, 0.78, 1.45);
+  body.position.set(0, 0.3, 0);
   g.add(body);
 
-  // Belly patch
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), bellMat);
-  belly.scale.set(0.78, 0.85, 0.28);
-  belly.position.set(0, 0.28, 0.27);
+  // Belly
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), bellyMat);
+  belly.scale.set(0.72, 0.38, 1.15);
+  belly.position.set(0, 0.15, 0);
   g.add(belly);
 
-  // Head — rounder, bigger than cat
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), bodyMat);
-  head.position.set(0, 0.74, 0.08);
+  // ── NECK ──
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.18, 7), bodyMat);
+  neck.rotation.x = -0.6;
+  neck.position.set(0, 0.38, 0.3);
+  g.add(neck);
+
+  // ── HEAD — bigger/rounder than cat ──
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bodyMat);
+  head.position.set(0, 0.48, 0.48);
   g.add(head);
 
-  // Snout — protruding box
-  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.2), bellMat);
-  snout.position.set(0, 0.69, 0.26);
+  // Snout — flat rounded muzzle
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 7), bellyMat);
+  snout.scale.set(1.1, 0.72, 0.9);
+  snout.position.set(0, 0.44, 0.66);
   g.add(snout);
 
   // Nose
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), noseMat);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.048, 6, 5), noseMat);
   nose.scale.set(1.2, 0.85, 0.8);
-  nose.position.set(0, 0.73, 0.35);
+  nose.position.set(0, 0.49, 0.74);
   g.add(nose);
 
-  // Tongue
-  const tongue = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), tongueMat);
-  tongue.scale.set(1, 0.5, 0.9);
-  tongue.position.set(0, 0.6, 0.33);
+  // Tongue — hangs down from snout
+  const tongue = new THREE.Mesh(new THREE.SphereGeometry(0.052, 6, 5), tongueMat);
+  tongue.scale.set(0.9, 0.45, 0.85);
+  tongue.position.set(0, 0.38, 0.7);
   g.add(tongue);
 
   // Eyes
-  [-0.11, 0.11].forEach((ex) => {
+  [-0.12, 0.12].forEach((ex) => {
     const white = new THREE.Mesh(new THREE.SphereGeometry(0.062, 8, 7), eyeWMat);
-    white.position.set(ex, 0.79, 0.24);
+    white.position.set(ex, 0.535, 0.63);
     g.add(white);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), eyeMat);
-    pupil.position.set(ex * 0.9, 0.79, 0.265);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.04, 7, 6), eyeMat);
+    pupil.position.set(ex * 0.9, 0.535, 0.655);
     g.add(pupil);
+    // shine
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.015, 5, 5), eyeWMat);
+    shine.position.set(ex * 0.85 + 0.012, 0.552, 0.668);
+    g.add(shine);
   });
 
-  // Floppy ears — flat boxes hanging down
-  [-0.28, 0.28].forEach((ex) => {
-    const ear = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.28, 0.08), accentMat);
-    ear.rotation.z = ex < 0 ? 0.15 : -0.15;
-    ear.position.set(ex, 0.67, 0.0);
+  // Floppy ears — rounded rectangles hanging at sides of head
+  [-0.26, 0.26].forEach((ex) => {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 7), accMat);
+    ear.scale.set(0.72, 1.55, 0.35);
+    ear.rotation.z = ex < 0 ? 0.12 : -0.12;
+    ear.position.set(ex, 0.42, 0.46);
     g.add(ear);
   });
 
-  // Tail — arc of spheres pointing up
-  for (let t = 0; t < 6; t++) {
-    const angle = (t / 5) * (Math.PI * 0.7);
+  // ── TAIL — wagging arc from back ──
+  for (let t = 0; t < 7; t++) {
+    const angle = (t / 6) * (Math.PI * 0.75);
     const seg = new THREE.Mesh(
-      new THREE.SphereGeometry(0.065 - t * 0.006, 7, 6),
-      t >= 4 ? accentMat : bodyMat
+      new THREE.SphereGeometry(0.068 - t * 0.006, 7, 6),
+      t >= 5 ? accMat : bodyMat
     );
     seg.position.set(
-      Math.sin(angle) * 0.22,
-      0.3 + Math.cos(angle) * 0.22 + t * 0.04,
-      -0.25 - t * 0.018
+      0,
+      0.22 + Math.sin(angle) * 0.3 + t * 0.022,
+      -0.35 - Math.cos(angle) * 0.3 - t * 0.008
     );
     g.add(seg);
   }
 
-  // 4 legs + paws
-  [[-0.18, 0.1], [0.18, 0.1], [-0.14, -0.17], [0.14, -0.17]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.24, 7), bodyMat);
-    leg.position.set(lx, 0.02, lz);
+  // ── 4 LEGS — front pair at +z, hind pair at -z ──
+  [[-0.17, 0.24], [0.17, 0.24], [-0.16, -0.25], [0.16, -0.25]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.048, 0.28, 7), bodyMat);
+    leg.position.set(lx, 0.04, lz);
     g.add(leg);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.08, 7, 6), accentMat);
-    paw.scale.set(1, 0.6, 1.15);
-    paw.position.set(lx, -0.11, lz);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.076, 7, 6), accMat);
+    paw.scale.set(1.1, 0.55, 1.2);
+    paw.position.set(lx, -0.12, lz + (lz > 0 ? 0.05 : -0.02));
     g.add(paw);
   });
 
@@ -1067,6 +1082,7 @@ export default function GameScreen() {
 
   // ── Audio: coin SFX + looping background music ────────────────────────────
   const coinPlayer = useAudioPlayer(require("../../assets/sounds/coin.mp3"));
+  const musicPlayer = useAudioPlayer(require("../../assets/sounds/music.mp3"));
   const trafficPlayer = useAudioPlayer(require("../../assets/sounds/traffic.mp3"));
   const crashPlayer = useAudioPlayer(require("../../assets/sounds/crash.mp3"));
   const hopPlayer = useAudioPlayer(require("../../assets/sounds/hop.mp3"));
@@ -1082,10 +1098,17 @@ export default function GameScreen() {
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    musicPlayer.loop = true;
+    musicPlayer.volume = 0.35;
     trafficPlayer.loop = true;
     trafficPlayer.volume = 0.25;
     characterPlayer.volume = 0.8;
-  }, [trafficPlayer, characterPlayer]);
+  }, [musicPlayer, trafficPlayer, characterPlayer]);
+
+  // Music plays continuously from the moment the app opens
+  useEffect(() => {
+    musicPlayer.play();
+  }, [musicPlayer]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
