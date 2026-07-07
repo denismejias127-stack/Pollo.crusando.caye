@@ -45,7 +45,7 @@ const CELL = 1;
 const BOARD_HALF = 4;
 const ROAD_HALF  = BOARD_HALF + 1; // visible road half-width (5 units each side)
 const HOP_MS = 160;
-const HOP_ARC = 0.55;
+const HOP_ARC = 0.0;
 const VISIBLE_ROWS = 24;
 const SAFE_AHEAD = 8;
 
@@ -574,35 +574,36 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
     g.add(tip);
   });
 
-  // ── LEGS — cylinders with knee joint ──
+  // ── LEGS — grouped for walk animation ──
+  const chickenLegs: THREE.Group[] = [];
   [-0.14, 0.14].forEach((lx) => {
-    // upper thigh
+    const lg = new THREE.Group();
+    lg.position.set(lx, 0.09, 0.0);
     const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.042, 0.2, 7), legMat);
-    thigh.position.set(lx, 0.09, 0.0);
-    g.add(thigh);
-    // knee bump
+    thigh.position.set(0, 0, 0);
+    lg.add(thigh);
     const knee = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), legMat);
-    knee.position.set(lx, -0.02, 0.02);
-    g.add(knee);
-    // lower leg (angled slightly forward)
+    knee.position.set(0, -0.11, 0.02);
+    lg.add(knee);
     const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.028, 0.2, 6), legMat);
     shin.rotation.x = 0.22;
-    shin.position.set(lx, -0.13, 0.04);
-    g.add(shin);
-    // 3 toes
+    shin.position.set(0, -0.22, 0.04);
+    lg.add(shin);
     [-0.065, 0.0, 0.065].forEach((tz2, ti) => {
       const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.012, 0.14, 5), legMat);
       toe.rotation.x = Math.PI / 2;
       toe.rotation.z = (ti - 1) * 0.35;
-      toe.position.set(lx + (ti - 1) * 0.04, -0.24, 0.09 + tz2 * 0.3);
-      g.add(toe);
+      toe.position.set((ti - 1) * 0.04, -0.33, 0.09 + tz2 * 0.3);
+      lg.add(toe);
     });
-    // rear toe
     const rearToe = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.01, 0.1, 5), legMat);
     rearToe.rotation.x = -Math.PI / 2;
-    rearToe.position.set(lx, -0.24, -0.06);
-    g.add(rearToe);
+    rearToe.position.set(0, -0.33, -0.06);
+    lg.add(rearToe);
+    g.add(lg);
+    chickenLegs.push(lg);
   });
+  g.userData.legs = chickenLegs;
 
   setShadow(g, true, false);
   return g;
@@ -701,16 +702,22 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
     g.add(seg);
   }
 
-  // ── 4 LEGS — front pair at +z, back pair at -z ──
+  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR) ──
+  const catLegs: THREE.Group[] = [];
   [[-0.15, 0.22], [0.15, 0.22], [-0.14, -0.22], [0.14, -0.22]].forEach(([lx, lz]) => {
+    const lg = new THREE.Group();
+    lg.position.set(lx, 0.1, lz);
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.042, 0.26, 7), bodyMat);
-    leg.position.set(lx, 0.04, lz);
-    g.add(leg);
+    leg.position.set(0, -0.06, 0);
+    lg.add(leg);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.068, 7, 6), accMat);
     paw.scale.set(1.1, 0.55, 1.2);
-    paw.position.set(lx, -0.11, lz + (lz > 0 ? 0.04 : -0.02));
-    g.add(paw);
+    paw.position.set(0, -0.21, lz > 0 ? 0.04 : -0.02);
+    lg.add(paw);
+    g.add(lg);
+    catLegs.push(lg);
   });
+  g.userData.legs = catLegs;
 
   setShadow(g, true, false);
   return g;
@@ -806,16 +813,22 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
     g.add(seg);
   }
 
-  // ── 4 LEGS — front pair at +z, hind pair at -z ──
+  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR) ──
+  const dogLegs: THREE.Group[] = [];
   [[-0.17, 0.24], [0.17, 0.24], [-0.16, -0.25], [0.16, -0.25]].forEach(([lx, lz]) => {
+    const lg = new THREE.Group();
+    lg.position.set(lx, 0.12, lz);
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.048, 0.28, 7), bodyMat);
-    leg.position.set(lx, 0.04, lz);
-    g.add(leg);
+    leg.position.set(0, -0.07, 0);
+    lg.add(leg);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.076, 7, 6), accMat);
     paw.scale.set(1.1, 0.55, 1.2);
-    paw.position.set(lx, -0.12, lz + (lz > 0 ? 0.05 : -0.02));
-    g.add(paw);
+    paw.position.set(0, -0.24, lz > 0 ? 0.05 : -0.02);
+    lg.add(paw);
+    g.add(lg);
+    dogLegs.push(lg);
   });
+  g.userData.legs = dogLegs;
 
   setShadow(g, true, false);
   return g;
@@ -1476,6 +1489,22 @@ export default function GameScreen() {
             } else {
               s.playerMesh.rotation.y = s.hop.toZ > s.hop.fromZ ? Math.PI : 0;
             }
+            // ── Walk animation: swing legs during movement ──
+            const legs = s.playerMesh.userData.legs as THREE.Group[] | undefined;
+            if (legs && legs.length > 0) {
+              const swing = Math.sin(t * Math.PI * 3) * 0.55;
+              if (legs.length >= 4) {
+                // Diagonal gait: FL+BR together, FR+BL together
+                legs[0].rotation.x =  swing;  // front-left
+                legs[1].rotation.x = -swing;  // front-right
+                legs[2].rotation.x = -swing;  // back-left
+                legs[3].rotation.x =  swing;  // back-right
+              } else {
+                // 2 legs (chicken): alternate
+                legs[0].rotation.x =  swing;
+                legs[1].rotation.x = -swing;
+              }
+            }
           }
           if (t >= 1) {
             s.hop.active = false;
@@ -1483,6 +1512,9 @@ export default function GameScreen() {
             s.playerZ = s.hop.toZ;
             if (s.playerMesh) {
               s.playerMesh.position.set(s.playerX, 0, -s.playerZ);
+              // Reset legs to neutral pose
+              const legs = s.playerMesh.userData.legs as THREE.Group[] | undefined;
+              if (legs) legs.forEach((l) => { l.rotation.x = 0; });
             }
             checkCollision();
             // ── Collect only the coin at the exact landing spot ──
