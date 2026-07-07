@@ -886,10 +886,14 @@ function makePilbu(): THREE.Group {
 
 function makePlayerMesh(charId: CharId): THREE.Group {
   const char = CHARACTERS.find((c) => c.id === charId) ?? CHARACTERS[0];
-  if (char.type === "cat")   return makeCat(char.bodyColor, char.accentColor);
-  if (char.type === "dog")   return makeDog(char.bodyColor, char.accentColor);
-  if (char.type === "pilbu") return makePilbu();
-  return makeChicken({ bodyColor: char.bodyColor, wingColor: char.accentColor });
+  let g: THREE.Group;
+  if (char.type === "cat")   g = makeCat(char.bodyColor, char.accentColor);
+  else if (char.type === "dog")   g = makeDog(char.bodyColor, char.accentColor);
+  else if (char.type === "pilbu") g = makePilbu();
+  else g = makeChicken({ bodyColor: char.bodyColor, wingColor: char.accentColor });
+  // Scale down to proper small-animal proportions (roughly half the road-cell size)
+  g.scale.setScalar(0.48);
+  return g;
 }
 
 /** Spinning gold coin collectible */
@@ -1505,7 +1509,7 @@ export default function GameScreen() {
           } else {
             // Interior: camera at chicken's eye level, hidden model, first-person
             s.playerMesh.visible = false;
-            const eyeY = s.playerMesh.position.y + 0.78;
+            const eyeY = s.playerMesh.position.y + 0.38;
             const eyeZ = pz - 0.1;
             s.camera.position.x += (px   - s.camera.position.x) * 0.22;
             s.camera.position.y += (eyeY - s.camera.position.y) * 0.22;
