@@ -1485,7 +1485,7 @@ export default function GameScreen() {
             s.playerMesh.position.set(x, arc, z);
             if (s.hop.toX !== s.hop.fromX) {
               s.playerMesh.rotation.y =
-                s.hop.toX > s.hop.fromX ? -Math.PI / 2 : Math.PI / 2;
+                s.hop.toX > s.hop.fromX ? Math.PI / 2 : -Math.PI / 2;
             } else {
               s.playerMesh.rotation.y = s.hop.toZ > s.hop.fromZ ? Math.PI : 0;
             }
