@@ -1067,7 +1067,6 @@ export default function GameScreen() {
 
   // ── Audio: coin SFX + looping background music ────────────────────────────
   const coinPlayer = useAudioPlayer(require("../../assets/sounds/coin.mp3"));
-  const musicPlayer = useAudioPlayer(require("../../assets/sounds/music.mp3"));
   const trafficPlayer = useAudioPlayer(require("../../assets/sounds/traffic.mp3"));
   const crashPlayer = useAudioPlayer(require("../../assets/sounds/crash.mp3"));
   const hopPlayer = useAudioPlayer(require("../../assets/sounds/hop.mp3"));
@@ -1083,17 +1082,10 @@ export default function GameScreen() {
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
-    musicPlayer.loop = true;
-    musicPlayer.volume = 0.35;
     trafficPlayer.loop = true;
     trafficPlayer.volume = 0.25;
     characterPlayer.volume = 0.8;
-  }, [musicPlayer, trafficPlayer, characterPlayer]);
-
-  // Music plays continuously from the moment the app opens.
-  useEffect(() => {
-    musicPlayer.play();
-  }, [musicPlayer]);
+  }, [trafficPlayer, characterPlayer]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
