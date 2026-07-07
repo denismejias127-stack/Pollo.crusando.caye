@@ -835,79 +835,96 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
   return g;
 }
 
-/** Pilbu — mysterious chubby blob creature */
+/** Pilbu — chubby purple dog with floppy ears */
 function makePilbu(): THREE.Group {
-  const g = new THREE.Group();
-  const bodyMat   = new THREE.MeshLambertMaterial({ color: 0x7c4dff });
-  const spotMat   = new THREE.MeshLambertMaterial({ color: 0xb388ff });
-  const eyeWMat   = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const pupilMat  = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
-  const shineMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const mouthMat  = new THREE.MeshLambertMaterial({ color: 0xff80ab });
-  const antMat    = new THREE.MeshLambertMaterial({ color: 0xea80fc });
-  const legMat    = new THREE.MeshLambertMaterial({ color: 0x651fff });
+  const g        = new THREE.Group();
+  const bodyMat  = new THREE.MeshLambertMaterial({ color: 0x7c4dff });
+  const accMat   = new THREE.MeshLambertMaterial({ color: 0xce93d8 });
+  const eyeWMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const pupilMat = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
+  const noseMat  = new THREE.MeshLambertMaterial({ color: 0x4a148c });
 
-  // Big round body — the blob is mostly head
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), bodyMat);
-  body.scale.set(1.0, 1.05, 0.95);
-  body.position.y = 0.42;
+  // Body — horizontal stretched sphere like cat/dog
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 9), bodyMat);
+  body.scale.set(0.95, 0.82, 1.7);
+  body.position.set(0, 0.22, 0);
   g.add(body);
 
   // Tummy spot
-  const tummy = new THREE.Mesh(new THREE.SphereGeometry(0.22, 9, 8), spotMat);
-  tummy.scale.set(0.85, 0.8, 0.3);
-  tummy.position.set(0, 0.38, 0.33);
+  const tummy = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 7), accMat);
+  tummy.scale.set(0.85, 0.65, 0.32);
+  tummy.position.set(0, 0.14, 0.18);
   g.add(tummy);
 
-  // Giant round eyes — takes up 1/3 of face
-  [-0.16, 0.16].forEach((ex) => {
-    const white = new THREE.Mesh(new THREE.SphereGeometry(0.13, 9, 8), eyeWMat);
-    white.position.set(ex, 0.56, 0.34);
-    g.add(white);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 7), pupilMat);
-    pupil.position.set(ex * 0.88, 0.56, 0.42);
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.14, 8), bodyMat);
+  neck.position.set(0, 0.26, 0.29);
+  g.add(neck);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), bodyMat);
+  head.scale.set(1.05, 1.0, 1.05);
+  head.position.set(0, 0.32, 0.45);
+  g.add(head);
+
+  // Muzzle
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 7), accMat);
+  muzzle.scale.set(1.1, 0.75, 0.9);
+  muzzle.position.set(0, 0.26, 0.61);
+  g.add(muzzle);
+
+  // Nose
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.048, 7, 6), noseMat);
+  nose.scale.set(1.1, 0.75, 0.8);
+  nose.position.set(0, 0.3, 0.68);
+  g.add(nose);
+
+  // Eyes
+  [-0.1, 0.1].forEach((ex) => {
+    const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), eyeWMat);
+    eyeW.position.set(ex, 0.38, 0.59);
+    g.add(eyeW);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), pupilMat);
+    pupil.position.set(ex * 0.9, 0.38, 0.64);
     g.add(pupil);
-    // Eye shine
-    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 5), shineMat);
-    shine.position.set(ex * 0.82 + 0.04, 0.585, 0.47);
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.015, 5, 4), eyeWMat);
+    shine.position.set(ex * 0.85 + 0.02, 0.395, 0.67);
     g.add(shine);
   });
 
-  // Smile — row of spheres curving up
-  for (let i = 0; i < 7; i++) {
-    const t = (i / 6 - 0.5) * 0.36;
-    const sm = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), mouthMat);
-    sm.position.set(t, 0.38 + Math.abs(t) * 0.22, 0.41);
-    g.add(sm);
-  }
-
-  // Antenna
-  const antStalk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.24, 6), antMat);
-  antStalk.position.set(0.06, 0.86, 0.06);
-  antStalk.rotation.z = 0.18;
-  g.add(antStalk);
-  const antBall = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), antMat);
-  antBall.position.set(0.1, 0.99, 0.06);
-  g.add(antBall);
-
-  // Stubby little legs (4)
-  [[-0.2, 0.08], [0.2, 0.08], [-0.16, -0.18], [0.16, -0.18]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.18, 8), legMat);
-    leg.position.set(lx, 0.02, lz);
-    g.add(leg);
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 7), legMat);
-    foot.scale.set(1, 0.6, 1.1);
-    foot.position.set(lx, -0.09, lz + 0.02);
-    g.add(foot);
+  // Floppy droopy ears — the signature feature
+  [-1, 1].forEach((side) => {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 7), accMat);
+    ear.scale.set(0.65, 1.6, 0.45);
+    ear.position.set(side * 0.2, 0.26, 0.42);
+    g.add(ear);
   });
 
-  // Tiny nub arms
-  [-0.42, 0.42].forEach((ax) => {
-    const arm = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), bodyMat);
-    arm.scale.set(1, 0.75, 0.75);
-    arm.position.set(ax, 0.42, 0.06);
-    g.add(arm);
+  // Tail — stubby curled up at the back
+  const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.18, 8), bodyMat);
+  tailBase.rotation.x = -0.7;
+  tailBase.position.set(0, 0.34, -0.44);
+  g.add(tailBase);
+  const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), accMat);
+  tailTip.position.set(0, 0.46, -0.52);
+  g.add(tailTip);
+
+  // 4 grouped legs — pivot at hip, same pattern as cat/dog
+  const pilbuLegs: THREE.Group[] = [];
+  [[-0.16, 0.22], [0.16, 0.22], [-0.15, -0.24], [0.15, -0.24]].forEach(([lx, lz]) => {
+    const lg = new THREE.Group();
+    lg.position.set(lx, 0.1, lz);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.22, 8), bodyMat);
+    leg.position.set(0, -0.11, 0);
+    lg.add(leg);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.068, 8, 7), accMat);
+    paw.scale.set(1.1, 0.6, 1.2);
+    paw.position.set(0, -0.25, lz > 0 ? 0.03 : -0.01);
+    lg.add(paw);
+    g.add(lg);
+    pilbuLegs.push(lg);
   });
+  g.userData.legs = pilbuLegs;
 
   setShadow(g, true, false);
   return g;
@@ -1091,6 +1108,7 @@ export default function GameScreen() {
   const [selectedChar, setSelectedChar] = useState<CharId>("chicken_gold");
   const [showShop, setShowShop] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [highScore, setHighScore] = useState(0);
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
@@ -1179,8 +1197,8 @@ export default function GameScreen() {
 
   // ── Load saved wallet + unlocks on first mount ────────────────────────────
   useEffect(() => {
-    AsyncStorage.multiGet(["pollo_coins", "pollo_unlocked", "pollo_selected"])
-      .then(([coinsEntry, unlockedEntry, selectedEntry]) => {
+    AsyncStorage.multiGet(["pollo_coins", "pollo_unlocked", "pollo_selected", "pollo_high"])
+      .then(([coinsEntry, unlockedEntry, selectedEntry, highEntry]) => {
         if (coinsEntry[1]) setTotalCoins(parseInt(coinsEntry[1], 10) || 0);
         if (unlockedEntry[1]) {
           try {
@@ -1189,10 +1207,18 @@ export default function GameScreen() {
           } catch { /* ignore */ }
         }
         if (selectedEntry[1]) setSelectedChar(selectedEntry[1] as CharId);
+        if (highEntry[1]) setHighScore(parseInt(highEntry[1], 10) || 0);
       })
       .catch(() => {})
       .finally(() => setSaveLoaded(true));
   }, []);
+
+  // ── Update high score when game ends ──────────────────────────────────────
+  useEffect(() => {
+    if (gameOver && score > highScore) {
+      setHighScore(score);
+    }
+  }, [gameOver, score, highScore]);
 
   // ── Save wallet + unlocks whenever they change (after initial load) ────────
   useEffect(() => {
@@ -1201,8 +1227,9 @@ export default function GameScreen() {
       ["pollo_coins",    String(totalCoins)],
       ["pollo_unlocked", JSON.stringify([...unlockedChars])],
       ["pollo_selected", selectedChar],
+      ["pollo_high",     String(highScore)],
     ]).catch(() => {});
-  }, [totalCoins, unlockedChars, selectedChar, saveLoaded]);
+  }, [totalCoins, unlockedChars, selectedChar, highScore, saveLoaded]);
 
   const stateRef = useRef<GameStateRef>({
     playerX: 0,
@@ -1797,6 +1824,11 @@ export default function GameScreen() {
           </Text>
           <Text style={styles.gameName}>Pollo Crossy</Text>
           <Text style={styles.subtitle}>Cruza la calle sin que te atropellen</Text>
+          {highScore > 0 && (
+            <View style={styles.walletRow}>
+              <Text style={styles.walletText}>🏆 Récord: {highScore}</Text>
+            </View>
+          )}
           {totalCoins > 0 && (
             <View style={styles.walletRow}>
               <Text style={styles.walletText}>💰 {totalCoins} monedas</Text>
@@ -1824,6 +1856,12 @@ export default function GameScreen() {
           <Text style={styles.gameOverSub}>¡Fue atropellado!</Text>
           <Text style={styles.gameOverScore}>{score}</Text>
           <Text style={styles.gameOverLabel}>filas cruzadas</Text>
+          {score > 0 && score >= highScore && (
+            <Text style={styles.newRecordText}>🏆 ¡Nuevo récord!</Text>
+          )}
+          {score < highScore && (
+            <Text style={styles.gameOverCoinText}>🏆 Récord: {highScore}</Text>
+          )}
           <View style={styles.gameOverCoins}>
             <Text style={styles.gameOverCoinText}>🪙 {coins} esta ronda</Text>
           </View>
@@ -2074,6 +2112,13 @@ const styles = StyleSheet.create({
     color: "#FFD700",
     fontSize: 20,
     fontWeight: "700",
+  },
+  newRecordText: {
+    color: "#FFD700",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginVertical: 4,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
