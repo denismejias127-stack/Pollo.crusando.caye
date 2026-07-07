@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -1110,17 +1110,24 @@ export default function GameScreen() {
   const characterPlayerRef = useRef(characterPlayer);
   characterPlayerRef.current = characterPlayer;
 
+  const musicStatus = useAudioPlayerStatus(musicPlayer);
+
+  // Configure audio mode once on mount
   useEffect(() => {
-    (async () => {
-      await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
-      musicPlayer.loop = true;
-      musicPlayer.volume = 0.45;
-      trafficPlayer.loop = true;
-      trafficPlayer.volume = 0.25;
-      characterPlayer.volume = 0.8;
-      musicPlayer.play();
-    })();
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    musicPlayer.loop = true;
+    musicPlayer.volume = 0.45;
+    trafficPlayer.loop = true;
+    trafficPlayer.volume = 0.25;
+    characterPlayer.volume = 0.8;
   }, [musicPlayer, trafficPlayer, characterPlayer]);
+
+  // Start music only once the track is loaded and ready
+  useEffect(() => {
+    if (musicStatus.isLoaded && !musicStatus.playing) {
+      musicPlayer.play();
+    }
+  }, [musicStatus.isLoaded, musicStatus.playing, musicPlayer]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
