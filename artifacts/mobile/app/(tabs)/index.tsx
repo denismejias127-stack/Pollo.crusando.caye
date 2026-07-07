@@ -575,31 +575,31 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
     g.add(tip);
   });
 
-  // ── LEGS — grouped for walk animation ──
+  // ── LEGS — grouped for walk animation, pivot at hip (top of cylinder) ──
   const chickenLegs: THREE.Group[] = [];
   [-0.14, 0.14].forEach((lx) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.09, 0.0);
+    lg.position.set(lx, 0.09, 0.0);  // hip = pivot
     const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.042, 0.2, 7), legMat);
-    thigh.position.set(0, 0, 0);
+    thigh.position.set(0, -0.1, 0);   // top at y=0 (hip), bottom at y=-0.2
     lg.add(thigh);
     const knee = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), legMat);
-    knee.position.set(0, -0.11, 0.02);
+    knee.position.set(0, -0.21, 0.02);
     lg.add(knee);
     const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.028, 0.2, 6), legMat);
     shin.rotation.x = 0.22;
-    shin.position.set(0, -0.22, 0.04);
+    shin.position.set(0, -0.32, 0.04);
     lg.add(shin);
     [-0.065, 0.0, 0.065].forEach((tz2, ti) => {
       const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.012, 0.14, 5), legMat);
       toe.rotation.x = Math.PI / 2;
       toe.rotation.z = (ti - 1) * 0.35;
-      toe.position.set((ti - 1) * 0.04, -0.33, 0.09 + tz2 * 0.3);
+      toe.position.set((ti - 1) * 0.04, -0.43, 0.09 + tz2 * 0.3);
       lg.add(toe);
     });
     const rearToe = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.01, 0.1, 5), legMat);
     rearToe.rotation.x = -Math.PI / 2;
-    rearToe.position.set(0, -0.33, -0.06);
+    rearToe.position.set(0, -0.43, -0.06);
     lg.add(rearToe);
     g.add(lg);
     chickenLegs.push(lg);
@@ -703,17 +703,17 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
     g.add(seg);
   }
 
-  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR) ──
+  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR), pivot at hip ──
   const catLegs: THREE.Group[] = [];
   [[-0.15, 0.22], [0.15, 0.22], [-0.14, -0.22], [0.14, -0.22]].forEach(([lx, lz]) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.1, lz);
+    lg.position.set(lx, 0.1, lz);   // hip = pivot
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.042, 0.26, 7), bodyMat);
-    leg.position.set(0, -0.06, 0);
+    leg.position.set(0, -0.13, 0);  // top at y=0, bottom at y=-0.26
     lg.add(leg);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.068, 7, 6), accMat);
     paw.scale.set(1.1, 0.55, 1.2);
-    paw.position.set(0, -0.21, lz > 0 ? 0.04 : -0.02);
+    paw.position.set(0, -0.30, lz > 0 ? 0.04 : -0.02);
     lg.add(paw);
     g.add(lg);
     catLegs.push(lg);
@@ -814,17 +814,17 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
     g.add(seg);
   }
 
-  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR) ──
+  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR), pivot at hip ──
   const dogLegs: THREE.Group[] = [];
   [[-0.17, 0.24], [0.17, 0.24], [-0.16, -0.25], [0.16, -0.25]].forEach(([lx, lz]) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.12, lz);
+    lg.position.set(lx, 0.12, lz);  // hip = pivot
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.048, 0.28, 7), bodyMat);
-    leg.position.set(0, -0.07, 0);
+    leg.position.set(0, -0.14, 0);  // top at y=0, bottom at y=-0.28
     lg.add(leg);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.076, 7, 6), accMat);
     paw.scale.set(1.1, 0.55, 1.2);
-    paw.position.set(0, -0.24, lz > 0 ? 0.05 : -0.02);
+    paw.position.set(0, -0.32, lz > 0 ? 0.05 : -0.02);
     lg.add(paw);
     g.add(lg);
     dogLegs.push(lg);
@@ -1496,21 +1496,23 @@ export default function GameScreen() {
           const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
           const x = s.hop.fromX + (s.hop.toX - s.hop.fromX) * eased;
           const z = -(s.hop.fromZ + (s.hop.toZ - s.hop.fromZ) * eased);
-          const arc = Math.sin(t * Math.PI) * HOP_ARC;
+          // Small double-step bob: two gentle lifts matching each leg stride
+          const bob = Math.abs(Math.sin(t * Math.PI * 2)) * 0.04;
           if (s.playerMesh) {
-            s.playerMesh.position.set(x, arc, z);
+            s.playerMesh.position.set(x, bob, z);
             if (s.hop.toX !== s.hop.fromX) {
               s.playerMesh.rotation.y =
                 s.hop.toX > s.hop.fromX ? Math.PI / 2 : -Math.PI / 2;
             } else {
               s.playerMesh.rotation.y = s.hop.toZ > s.hop.fromZ ? Math.PI : 0;
             }
-            // ── Walk animation: swing legs during movement ──
+            // ── Walk animation: swing legs in sync with body bob ──
             const legs = s.playerMesh.userData.legs as THREE.Group[] | undefined;
             if (legs && legs.length > 0) {
-              const swing = Math.sin(t * Math.PI * 4) * 0.85;
+              // One full gait cycle per step: matches the double-bob above
+              const swing = Math.sin(t * Math.PI * 2) * 0.75;
               if (legs.length >= 4) {
-                // Diagonal gait: FL+BR together, FR+BL together
+                // Diagonal gait: FL+BR swing forward, FR+BL swing back
                 legs[0].rotation.x =  swing;  // front-left
                 legs[1].rotation.x = -swing;  // front-right
                 legs[2].rotation.x = -swing;  // back-left
@@ -1520,8 +1522,6 @@ export default function GameScreen() {
                 legs[0].rotation.x =  swing;
                 legs[1].rotation.x = -swing;
               }
-              // Subtle body rock side-to-side while stepping
-              s.playerMesh.rotation.z = Math.sin(t * Math.PI * 4) * 0.07;
             }
           }
           if (t >= 1) {
