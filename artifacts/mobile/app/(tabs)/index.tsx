@@ -1961,7 +1961,7 @@ export default function GameScreen() {
       )}
 
       {/* Game over */}
-      {gameOver && !showShop && (
+      {gameOver && !showShop && !showAchievements && (
         <View style={styles.overlay}>
           <Text style={styles.gameOverTitle}>¡Oh no!</Text>
           <Text style={styles.gameOverSub}>¡Fue atropellado!</Text>
@@ -1980,13 +1980,19 @@ export default function GameScreen() {
             <Text style={styles.gameOverCoinText}>💰 {totalCoins} total</Text>
           </View>
           <TouchableOpacity style={styles.startBtn} onPress={restart}>
-            <Text style={styles.startBtnText}>REINTENTAR</Text>
+            <Text style={styles.startBtnText}>JUGAR DE NUEVO</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
             onPress={() => setShowShop(true)}
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shopBtn}
+            onPress={() => setShowAchievements(true)}
+          >
+            <Text style={styles.shopBtnText}>🏅 LOGROS DEL DÍA</Text>
           </TouchableOpacity>
         </View>
       )}
