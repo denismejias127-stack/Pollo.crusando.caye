@@ -122,6 +122,40 @@ const CHARACTERS = [
 ] as const;
 type CharId = typeof CHARACTERS[number]["id"];
 
+// ─── Daily Achievements ───────────────────────────────────────────────────────
+type AchType = "score" | "coins_round" | "rounds_today" | "beat_record";
+interface AchievementDef {
+  id: string;
+  title: string;
+  desc: string;
+  reward: number;
+  type: AchType;
+  target: number;
+}
+const ALL_ACHIEVEMENTS: AchievementDef[] = [
+  { id: "a1", title: "Primer cruce",  desc: "Cruza 5 filas en una ronda",    reward: 15, type: "score",        target: 5  },
+  { id: "a2", title: "Corredor",      desc: "Cruza 10 filas en una ronda",   reward: 30, type: "score",        target: 10 },
+  { id: "a3", title: "Velocista",     desc: "Cruza 20 filas en una ronda",   reward: 60, type: "score",        target: 20 },
+  { id: "a4", title: "Ahorrador",     desc: "Gana 10 monedas en una ronda",  reward: 20, type: "coins_round",  target: 10 },
+  { id: "a5", title: "Rico Pollo",    desc: "Gana 30 monedas en una ronda",  reward: 55, type: "coins_round",  target: 30 },
+  { id: "a6", title: "Persistente",   desc: "Juega 3 rondas hoy",            reward: 25, type: "rounds_today", target: 3  },
+  { id: "a7", title: "Campeón",       desc: "Supera tu récord personal",      reward: 50, type: "beat_record",  target: 1  },
+  { id: "a8", title: "Maratonista",   desc: "Cruza 15 filas en una ronda",   reward: 45, type: "score",        target: 15 },
+  { id: "a9", title: "Monedero",      desc: "Gana 20 monedas en una ronda",  reward: 35, type: "coins_round",  target: 20 },
+];
+function getDateKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+function getDailyAchievements(): AchievementDef[] {
+  const dayNum = Math.floor(Date.now() / 86_400_000);
+  return [
+    ALL_ACHIEVEMENTS[dayNum % 9],
+    ALL_ACHIEVEMENTS[(dayNum + 3) % 9],
+    ALL_ACHIEVEMENTS[(dayNum + 6) % 9],
+  ];
+}
+
 const C = {
   sky: 0x87ceeb,
   horizon: 0xb8e0f7,
@@ -1109,6 +1143,11 @@ export default function GameScreen() {
   const [showShop, setShowShop] = useState(false);
   const [muted, setMuted] = useState(false);
   const [highScore, setHighScore] = useState(0);
+  const [dailyRewardClaimed, setDailyRewardClaimed] = useState(false);
+  const [dailyAchProgress, setDailyAchProgress] = useState<Record<string, number>>({});
+  const [dailyAchClaimed, setDailyAchClaimed] = useState<Set<string>>(new Set());
+  const [showAchievements, setShowAchievements] = useState(false);
+  const [roundsToday, setRoundsToday] = useState(0);
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
@@ -1195,30 +1234,61 @@ export default function GameScreen() {
   const playCharacterSoundRef = useRef(playCharacterSound);
   playCharacterSoundRef.current = playCharacterSound;
 
-  // ── Load saved wallet + unlocks on first mount ────────────────────────────
+  // ── Load saved wallet + unlocks + daily data on first mount ─────────────
   useEffect(() => {
-    AsyncStorage.multiGet(["pollo_coins", "pollo_unlocked", "pollo_selected", "pollo_high"])
-      .then(([coinsEntry, unlockedEntry, selectedEntry, highEntry]) => {
-        if (coinsEntry[1]) setTotalCoins(parseInt(coinsEntry[1], 10) || 0);
-        if (unlockedEntry[1]) {
+    AsyncStorage.multiGet([
+      "pollo_coins", "pollo_unlocked", "pollo_selected", "pollo_high",
+      "pollo_day_key", "pollo_day_reward", "pollo_day_progress", "pollo_day_claimed", "pollo_day_rounds",
+    ]).then((entries) => {
+        const [coinsE, unlockedE, selectedE, highE,
+               dayKeyE, rewardE, progressE, claimedE, roundsE] = entries;
+        if (coinsE[1]) setTotalCoins(parseInt(coinsE[1], 10) || 0);
+        if (unlockedE[1]) {
           try {
-            const ids = JSON.parse(unlockedEntry[1]) as CharId[];
+            const ids = JSON.parse(unlockedE[1]) as CharId[];
             setUnlockedChars(new Set<CharId>(["chicken_gold", ...ids]));
           } catch { /* ignore */ }
         }
-        if (selectedEntry[1]) setSelectedChar(selectedEntry[1] as CharId);
-        if (highEntry[1]) setHighScore(parseInt(highEntry[1], 10) || 0);
+        if (selectedE[1]) setSelectedChar(selectedE[1] as CharId);
+        if (highE[1]) setHighScore(parseInt(highE[1], 10) || 0);
+        // Daily data — restore only if saved today
+        const todayKey = getDateKey();
+        if (dayKeyE[1] === todayKey) {
+          if (rewardE[1] === "true") setDailyRewardClaimed(true);
+          if (progressE[1]) {
+            try { setDailyAchProgress(JSON.parse(progressE[1])); } catch { /* ignore */ }
+          }
+          if (claimedE[1]) {
+            try { setDailyAchClaimed(new Set(JSON.parse(claimedE[1]) as string[])); } catch { /* ignore */ }
+          }
+          if (roundsE[1]) setRoundsToday(parseInt(roundsE[1], 10) || 0);
+        }
       })
       .catch(() => {})
       .finally(() => setSaveLoaded(true));
   }, []);
 
-  // ── Update high score when game ends ──────────────────────────────────────
+  // ── Update high score + achievement progress when game ends ──────────────
   useEffect(() => {
-    if (gameOver && score > highScore) {
-      setHighScore(score);
-    }
-  }, [gameOver, score, highScore]);
+    if (!gameOver) return;
+    const roundCoins = stateRef.current.coinScore;
+    const beatsRecord = score > highScore;
+    if (beatsRecord) setHighScore(score);
+    setRoundsToday((prevRounds) => {
+      const newRounds = prevRounds + 1;
+      setDailyAchProgress((prev) => {
+        const next = { ...prev };
+        for (const ach of getDailyAchievements()) {
+          if (ach.type === "score")             next[ach.id] = Math.max(next[ach.id] ?? 0, score);
+          else if (ach.type === "coins_round")  next[ach.id] = Math.max(next[ach.id] ?? 0, roundCoins);
+          else if (ach.type === "rounds_today") next[ach.id] = newRounds;
+          else if (ach.type === "beat_record" && beatsRecord) next[ach.id] = 1;
+        }
+        return next;
+      });
+      return newRounds;
+    });
+  }, [gameOver, score, highScore]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Save wallet + unlocks whenever they change (after initial load) ────────
   useEffect(() => {
@@ -1230,6 +1300,32 @@ export default function GameScreen() {
       ["pollo_high",     String(highScore)],
     ]).catch(() => {});
   }, [totalCoins, unlockedChars, selectedChar, highScore, saveLoaded]);
+
+  // ── Save daily data whenever it changes ───────────────────────────────────
+  useEffect(() => {
+    if (!saveLoaded) return;
+    AsyncStorage.multiSet([
+      ["pollo_day_key",      getDateKey()],
+      ["pollo_day_reward",   dailyRewardClaimed ? "true" : "false"],
+      ["pollo_day_progress", JSON.stringify(dailyAchProgress)],
+      ["pollo_day_claimed",  JSON.stringify([...dailyAchClaimed])],
+      ["pollo_day_rounds",   String(roundsToday)],
+    ]).catch(() => {});
+  }, [dailyRewardClaimed, dailyAchProgress, dailyAchClaimed, roundsToday, saveLoaded]);
+
+  const claimDailyReward = useCallback(() => {
+    setDailyRewardClaimed(true);
+    setTotalCoins((prev) => prev + 25);
+  }, []);
+
+  const claimAchievement = useCallback((ach: AchievementDef) => {
+    setDailyAchClaimed((prev) => {
+      const next = new Set(prev);
+      next.add(ach.id);
+      return next;
+    });
+    setTotalCoins((prev) => prev + ach.reward);
+  }, []);
 
   const stateRef = useRef<GameStateRef>({
     playerX: 0,
@@ -1846,6 +1942,21 @@ export default function GameScreen() {
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.shopBtn, dailyRewardClaimed && styles.shopBtnClaimed]}
+            onPress={dailyRewardClaimed ? undefined : claimDailyReward}
+            activeOpacity={dailyRewardClaimed ? 1 : 0.75}
+          >
+            <Text style={styles.shopBtnText}>
+              {dailyRewardClaimed ? "✓ Recompensa reclamada" : "🎁 RECLAMAR +25 🪙"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shopBtn}
+            onPress={() => setShowAchievements(true)}
+          >
+            <Text style={styles.shopBtnText}>🏅 LOGROS DEL DÍA</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1876,6 +1987,59 @@ export default function GameScreen() {
             onPress={() => setShowShop(true)}
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Achievements overlay */}
+      {showAchievements && (
+        <View style={styles.shopOverlay}>
+          <Text style={styles.shopTitle}>🏅 LOGROS DEL DÍA</Text>
+          <Text style={styles.shopWallet}>💰 {totalCoins} monedas</Text>
+          <Text style={styles.achSubtitle}>Nuevos logros mañana</Text>
+          <ScrollView
+            style={styles.shopScroll}
+            contentContainerStyle={styles.shopList}
+            showsVerticalScrollIndicator={false}
+          >
+            {getDailyAchievements().map((ach) => {
+              const progress = dailyAchProgress[ach.id] ?? 0;
+              const completed = progress >= ach.target;
+              const claimed = dailyAchClaimed.has(ach.id);
+              const pct = Math.min(1, progress / ach.target);
+              return (
+                <View key={ach.id} style={[styles.achCard, claimed && styles.achCardClaimed]}>
+                  <View style={styles.achInfo}>
+                    <Text style={styles.achTitle}>{ach.title}</Text>
+                    <Text style={styles.achDesc}>{ach.desc}</Text>
+                    <View style={styles.achBarBg}>
+                      <View style={[styles.achBarFill, { width: `${Math.round(pct * 100)}%` as any }]} />
+                    </View>
+                    <Text style={styles.achProgressText}>
+                      {claimed ? "✓ Reclamado" : `${Math.min(progress, ach.target)} / ${ach.target}`}
+                    </Text>
+                  </View>
+                  <View style={styles.achRight}>
+                    <Text style={styles.achReward}>+{ach.reward}🪙</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.achBtn,
+                        claimed ? styles.achBtnDone : completed ? styles.achBtnReady : styles.achBtnLocked,
+                      ]}
+                      onPress={() => { if (!claimed && completed) claimAchievement(ach); }}
+                      disabled={claimed || !completed}
+                    >
+                      <Text style={styles.achBtnText}>
+                        {claimed ? "✓" : completed ? "RECLAMAR" : "🔒"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity style={styles.shopBackBtn} onPress={() => setShowAchievements(false)}>
+            <Text style={styles.shopBackText}>← VOLVER</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2300,6 +2464,92 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     letterSpacing: 1,
+  },
+  shopBtnClaimed: {
+    opacity: 0.5,
+  },
+  achSubtitle: {
+    color: "#ffffffaa",
+    fontSize: 12,
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  achCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.1)",
+    gap: 12,
+  },
+  achCardClaimed: {
+    borderColor: "#69f0ae",
+    backgroundColor: "rgba(105,240,174,0.08)",
+  },
+  achInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  achTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  achDesc: {
+    color: "#ffffffcc",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  achBarBg: {
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 3,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  achBarFill: {
+    height: 6,
+    backgroundColor: "#FFD700",
+    borderRadius: 3,
+  },
+  achProgressText: {
+    color: "#ffffffaa",
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  achRight: {
+    alignItems: "center",
+    gap: 6,
+  },
+  achReward: {
+    color: "#FFD700",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  achBtn: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 80,
+    alignItems: "center",
+  },
+  achBtnReady: {
+    backgroundColor: "#4caf50",
+  },
+  achBtnDone: {
+    backgroundColor: "rgba(105,240,174,0.3)",
+  },
+  achBtnLocked: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  achBtnText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
   },
   dpad: {
     position: "absolute",
