@@ -4,9 +4,8 @@ import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
   Dimensions,
-  Easing,
+  Image,
   PanResponder,
   Platform,
   ScrollView,
@@ -1142,44 +1141,156 @@ function makeRoadRow(rowIdx: number): THREE.Group {
   return g;
 }
 
-// ─── Character Preview (Animated emoji — avoids second WebGL context) ────────
-function CharacterPreviewAnimated({ charId }: { charId: CharId }) {
-  const char = CHARACTERS.find((c) => c.id === charId)!;
-  const bob   = useRef(new Animated.Value(0)).current;
-  const sway  = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(1)).current;
+// ─── Character Preview — real 3-D animated model (shown in detail overlay) ───
+// NOTE: main game GLView must be unmounted before mounting this component
+// (only one WebGL context can be active at a time on Expo GL).
+function CharacterPreviewGL({ charId }: { charId: CharId }) {
+  const animRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(bob, { toValue: -14, duration: 320, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(bob, { toValue: 0,   duration: 320, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    ).start();
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(sway, { toValue: -8, duration: 420, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(sway, { toValue:  8, duration: 420, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    ).start();
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 1.08, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 1.00, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ])
-    ).start();
-  }, [bob, sway, scale]);
+  const onContextCreate = useCallback(
+    (gl: any) => {
+      const w = gl.drawingBufferWidth;
+      const h = gl.drawingBufferHeight;
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: {
+          width: w, height: h, style: {},
+          addEventListener: () => {}, removeEventListener: () => {},
+          clientWidth: w, clientHeight: h,
+        } as any,
+        context: gl,
+        antialias: true,
+      });
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x141428);
+      renderer.shadowMap.enabled = false;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x141428);
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 50);
+      camera.position.set(0, 0.65, 2.4);
+      camera.lookAt(0, 0.15, 0);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+      sun.position.set(2, 4, 2);
+      scene.add(sun);
+      const fill = new THREE.DirectionalLight(0x8080ff, 0.3);
+      fill.position.set(-2, 1, -1);
+      scene.add(fill);
+
+      // Ground disc
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(0.9, 40),
+        new THREE.MeshLambertMaterial({ color: 0x1e1e3a })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.25;
+      scene.add(ground);
+
+      const mesh = makePlayerMesh(charId);
+      mesh.scale.setScalar(1.05);
+      scene.add(mesh);
+
+      const start = Date.now();
+      const tick = () => {
+        animRef.current = requestAnimationFrame(tick);
+        const t = (Date.now() - start) / 1000;
+        mesh.rotation.y = t * 0.65;
+        mesh.position.y = Math.abs(Math.sin(t * Math.PI * 2)) * 0.04;
+        const swing = Math.sin(t * Math.PI * 2) * 0.42;
+        const legs = mesh.userData.legs as THREE.Group[] | undefined;
+        if (legs) {
+          if (legs.length >= 4) {
+            legs[0].rotation.x =  swing; legs[1].rotation.x = -swing;
+            legs[2].rotation.x = -swing; legs[3].rotation.x =  swing;
+          } else if (legs.length === 2) {
+            legs[0].rotation.x =  swing; legs[1].rotation.x = -swing;
+          }
+        }
+        renderer.render(scene, camera);
+        gl.endFrameEXP();
+      };
+      tick();
+    },
+    [charId]
+  );
+
+  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
 
   return (
-    <View style={styles.previewContainer}>
-      {/* Glowing background disc */}
-      <View style={styles.previewDisc} />
-      <Animated.Text
-        style={[styles.previewEmoji, { transform: [{ translateY: bob }, { translateX: sway }, { scale }] }]}
-      >
-        {char.emoji}
-      </Animated.Text>
-    </View>
+    <GLView key={charId} style={styles.previewGLView} onContextCreate={onContextCreate} />
+  );
+}
+
+// ─── Thumbnail Minter — renders one character offscreen and snaps a JPEG ─────
+// Mounts only while main GLView is unmounted (mintingChar drives both).
+function ThumbnailMinter({
+  charId,
+  onDone,
+}: {
+  charId: CharId;
+  onDone: (id: CharId, uri: string) => void;
+}) {
+  const doneRef = useRef(false);
+
+  const onContextCreate = useCallback(
+    async (gl: any) => {
+      const w = gl.drawingBufferWidth;
+      const h = gl.drawingBufferHeight;
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: {
+          width: w, height: h, style: {},
+          addEventListener: () => {}, removeEventListener: () => {},
+          clientWidth: w, clientHeight: h,
+        } as any,
+        context: gl,
+        antialias: false,
+      });
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x1a1a2e);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a2e);
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 50);
+      camera.position.set(0, 0.65, 2.4);
+      camera.lookAt(0, 0.15, 0);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+      sun.position.set(2, 4, 2);
+      scene.add(sun);
+
+      const mesh = makePlayerMesh(charId);
+      mesh.rotation.y = Math.PI / 5;
+      scene.add(mesh);
+
+      renderer.render(scene, camera);
+      gl.endFrameEXP();
+
+      if (!doneRef.current) {
+        doneRef.current = true;
+        // Wait one frame so the native buffer is flushed before snapshot
+        await new Promise<void>((r) => setTimeout(r, 120));
+        try {
+          const snap = await GLView.takeSnapshotAsync(gl, { format: "jpeg", compress: 0.85 });
+          onDone(charId, typeof snap.uri === "string" ? snap.uri : "");
+        } catch {
+          onDone(charId, "");
+        }
+      }
+    },
+    [charId, onDone]
+  );
+
+  // Tiny but real dimensions so drawingBufferWidth/Height are non-zero
+  return (
+    <GLView
+      key={charId}
+      style={styles.thumbMinter}
+      onContextCreate={onContextCreate}
+    />
   );
 }
 
@@ -1203,6 +1314,9 @@ export default function GameScreen() {
   const [showAchievements, setShowAchievements] = useState(false);
   const [roundsToday, setRoundsToday] = useState(0);
   const [previewChar, setPreviewChar] = useState<CharId | null>(null);
+  const [charThumbnails, setCharThumbnails] = useState<Partial<Record<CharId, string>>>({});
+  const [mintingChar, setMintingChar]   = useState<CharId | null>(null);
+  const mintQueueRef = useRef<CharId[]>([]);
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
@@ -1222,6 +1336,25 @@ export default function GameScreen() {
   hopPlayerRef.current = hopPlayer;
   const characterPlayerRef = useRef(characterPlayer);
   characterPlayerRef.current = characterPlayer;
+
+  // ── Thumbnail minting: generate shop card images the first time shop opens ──
+  const handleMintDone = useCallback((charId: CharId, uri: string) => {
+    if (uri) setCharThumbnails((prev) => ({ ...prev, [charId]: uri }));
+    const next = mintQueueRef.current.shift();
+    if (next) {
+      setMintingChar(next);
+    } else {
+      setMintingChar(null); // done — main GLView will remount
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showShop && Object.keys(charThumbnails).length === 0 && mintingChar === null) {
+      mintQueueRef.current = CHARACTERS.map((c) => c.id).slice(1); // head pops below
+      setMintingChar(CHARACTERS[0].id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showShop]);
 
   const musicStatus = useAudioPlayerStatus(musicPlayer);
 
@@ -1913,11 +2046,18 @@ export default function GameScreen() {
 
   return (
     <View style={styles.root} {...panResponder.panHandlers}>
-      {webGLAvailable && (
+      {/* Main game renderer — hidden while a character preview or thumbnail
+          minting is active so only one WebGL context runs at a time. */}
+      {webGLAvailable && !previewChar && !mintingChar && (
         <GLView
           style={StyleSheet.absoluteFill}
           onContextCreate={onContextCreate}
         />
+      )}
+
+      {/* Thumbnail minter — offscreen, replaces main GLView during minting */}
+      {mintingChar && (
+        <ThumbnailMinter charId={mintingChar} onDone={handleMintDone} />
       )}
 
       {/* Score + Coins */}
@@ -2125,7 +2265,14 @@ export default function GameScreen() {
                   onPress={() => setPreviewChar(char.id)}
                   activeOpacity={0.78}
                 >
-                  <Text style={styles.charEmoji}>{char.emoji}</Text>
+                  {charThumbnails[char.id] ? (
+                    <Image
+                      source={{ uri: charThumbnails[char.id] }}
+                      style={styles.charThumb}
+                    />
+                  ) : (
+                    <Text style={styles.charEmoji}>{char.emoji}</Text>
+                  )}
                   <View style={styles.charInfo}>
                     <Text style={styles.charName}>{char.name}</Text>
                     {owned ? (
@@ -2167,7 +2314,7 @@ export default function GameScreen() {
             </TouchableOpacity>
 
             {/* 3-D animated preview */}
-            <CharacterPreviewAnimated charId={previewChar} />
+            <CharacterPreviewGL charId={previewChar} />
 
             <Text style={styles.previewName}>{char.emoji}  {char.name}</Text>
             <Text style={styles.previewDesc}>{CHAR_DESC[char.id]}</Text>
@@ -2525,24 +2672,29 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     marginLeft: 6,
   },
-  previewContainer: {
+  previewGLView: {
     width: "100%",
-    height: 200,
-    alignItems: "center",
-    justifyContent: "center",
+    height: 220,
+    borderRadius: 20,
+    overflow: "hidden",
     marginBottom: 6,
+    backgroundColor: "#141428",
   },
-  previewDisc: {
+  thumbMinter: {
+    // Offscreen but real size so drawingBuffer is non-zero
+    width: 100,
+    height: 100,
     position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(255,215,0,0.08)",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,215,0,0.18)",
+    top: -600,
+    left: -600,
+    opacity: 0,
   },
-  previewEmoji: {
-    fontSize: 110,
+  charThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    marginRight: 14,
+    backgroundColor: "#1a1a2e",
   },
   previewBack: {
     alignSelf: "flex-start",
