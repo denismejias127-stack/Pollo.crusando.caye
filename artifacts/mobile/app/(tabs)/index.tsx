@@ -4,7 +4,9 @@ import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Dimensions,
+  Easing,
   PanResponder,
   Platform,
   ScrollView,
@@ -1140,82 +1142,44 @@ function makeRoadRow(rowIdx: number): THREE.Group {
   return g;
 }
 
-// ─── Character Preview (animated 3-D in a small GLView) ──────────────────────
-function CharacterPreviewGL({ charId }: { charId: CharId }) {
-  const animRef = useRef<number | null>(null);
+// ─── Character Preview (Animated emoji — avoids second WebGL context) ────────
+function CharacterPreviewAnimated({ charId }: { charId: CharId }) {
+  const char = CHARACTERS.find((c) => c.id === charId)!;
+  const bob   = useRef(new Animated.Value(0)).current;
+  const sway  = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
 
-  const onContextCreate = useCallback(
-    (gl: any) => {
-      const { drawingBufferWidth: w, drawingBufferHeight: h } = gl;
-      const renderer = new THREE.WebGLRenderer({ canvas: { ...gl, style: {} } as any, antialias: true });
-      renderer.setSize(w, h);
-      renderer.setPixelRatio(1);
-      renderer.setClearColor(0x141428);
-      renderer.shadowMap.enabled = false;
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 50);
-      camera.position.set(0, 0.65, 2.4);
-      camera.lookAt(0, 0.15, 0);
-
-      scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-      const sun = new THREE.DirectionalLight(0xffffff, 0.95);
-      sun.position.set(2, 4, 2);
-      scene.add(sun);
-      const fill = new THREE.DirectionalLight(0x8080ff, 0.3);
-      fill.position.set(-2, 1, -1);
-      scene.add(fill);
-
-      // Ground disc
-      const ground = new THREE.Mesh(
-        new THREE.CircleGeometry(0.9, 40),
-        new THREE.MeshLambertMaterial({ color: 0x1e1e3a })
-      );
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -0.25;
-      scene.add(ground);
-
-      // Character mesh (scale up so it's easy to see)
-      const mesh = makePlayerMesh(charId);
-      mesh.scale.setScalar(1.05);
-      scene.add(mesh);
-
-      const start = Date.now();
-      const tick = () => {
-        animRef.current = requestAnimationFrame(tick);
-        const t = (Date.now() - start) / 1000;
-
-        mesh.rotation.y = t * 0.65;
-
-        const bob = Math.abs(Math.sin(t * Math.PI * 2)) * 0.04;
-        mesh.position.y = bob;
-
-        const swing = Math.sin(t * Math.PI * 2) * 0.42;
-        const legs = mesh.userData.legs as THREE.Group[] | undefined;
-        if (legs) {
-          if (legs.length >= 4) {
-            legs[0].rotation.x =  swing;
-            legs[1].rotation.x = -swing;
-            legs[2].rotation.x = -swing;
-            legs[3].rotation.x =  swing;
-          } else if (legs.length === 2) {
-            legs[0].rotation.x =  swing;
-            legs[1].rotation.x = -swing;
-          }
-        }
-
-        renderer.render(scene, camera);
-        gl.endFrameEXP();
-      };
-      tick();
-    },
-    [charId]
-  );
-
-  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: -14, duration: 320, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0,   duration: 320, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(sway, { toValue: -8, duration: 420, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(sway, { toValue:  8, duration: 420, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.08, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1.00, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    ).start();
+  }, [bob, sway, scale]);
 
   return (
-    <GLView key={charId} style={styles.previewGL} onContextCreate={onContextCreate} />
+    <View style={styles.previewContainer}>
+      {/* Glowing background disc */}
+      <View style={styles.previewDisc} />
+      <Animated.Text
+        style={[styles.previewEmoji, { transform: [{ translateY: bob }, { translateX: sway }, { scale }] }]}
+      >
+        {char.emoji}
+      </Animated.Text>
+    </View>
   );
 }
 
@@ -2203,7 +2167,7 @@ export default function GameScreen() {
             </TouchableOpacity>
 
             {/* 3-D animated preview */}
-            <CharacterPreviewGL charId={previewChar} />
+            <CharacterPreviewAnimated charId={previewChar} />
 
             <Text style={styles.previewName}>{char.emoji}  {char.name}</Text>
             <Text style={styles.previewDesc}>{CHAR_DESC[char.id]}</Text>
@@ -2561,12 +2525,24 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     marginLeft: 6,
   },
-  previewGL: {
+  previewContainer: {
     width: "100%",
-    height: 210,
-    borderRadius: 18,
-    overflow: "hidden",
+    height: 200,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 6,
+  },
+  previewDisc: {
+    position: "absolute",
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(255,215,0,0.08)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,215,0,0.18)",
+  },
+  previewEmoji: {
+    fontSize: 110,
   },
   previewBack: {
     alignSelf: "flex-start",
