@@ -122,6 +122,17 @@ const CHARACTERS = [
 ] as const;
 type CharId = typeof CHARACTERS[number]["id"];
 
+const CHAR_DESC: Record<CharId, string> = {
+  chicken_gold:  "El clásico original. Valiente y rápido, nunca se rinde ante el tráfico.",
+  chicken_red:   "Fogoso y audaz. Vive al límite y le encanta el peligro.",
+  cat_yellow:    "Ágil y curioso. Siempre aterriza de pie, pase lo que pase.",
+  cat_white:     "Elegante y sereno. Cruza las calles con una clase infinita.",
+  cat_gold:      "Rarísimo y misterioso. Dicen que trae muchísima buena suerte.",
+  dog_avocado:   "Ama la naturaleza y el guacamole. Nunca pide permiso para cruzar.",
+  dog_shepherd:  "Serio, disciplinado y leal. No le teme a ningún carro ni camión.",
+  pilbu:         "Nadie sabe de dónde vino ni a dónde va. Su mirada lo dice todo.",
+};
+
 // ─── Daily Achievements ───────────────────────────────────────────────────────
 type AchType = "score" | "coins_round" | "rounds_today" | "beat_record";
 interface AchievementDef {
@@ -1129,6 +1140,85 @@ function makeRoadRow(rowIdx: number): THREE.Group {
   return g;
 }
 
+// ─── Character Preview (animated 3-D in a small GLView) ──────────────────────
+function CharacterPreviewGL({ charId }: { charId: CharId }) {
+  const animRef = useRef<number | null>(null);
+
+  const onContextCreate = useCallback(
+    (gl: any) => {
+      const { drawingBufferWidth: w, drawingBufferHeight: h } = gl;
+      const renderer = new THREE.WebGLRenderer({ canvas: { ...gl, style: {} } as any, antialias: true });
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(1);
+      renderer.setClearColor(0x141428);
+      renderer.shadowMap.enabled = false;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 50);
+      camera.position.set(0, 0.65, 2.4);
+      camera.lookAt(0, 0.15, 0);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+      sun.position.set(2, 4, 2);
+      scene.add(sun);
+      const fill = new THREE.DirectionalLight(0x8080ff, 0.3);
+      fill.position.set(-2, 1, -1);
+      scene.add(fill);
+
+      // Ground disc
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(0.9, 40),
+        new THREE.MeshLambertMaterial({ color: 0x1e1e3a })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.25;
+      scene.add(ground);
+
+      // Character mesh (scale up so it's easy to see)
+      const mesh = makePlayerMesh(charId);
+      mesh.scale.setScalar(1.05);
+      scene.add(mesh);
+
+      const start = Date.now();
+      const tick = () => {
+        animRef.current = requestAnimationFrame(tick);
+        const t = (Date.now() - start) / 1000;
+
+        mesh.rotation.y = t * 0.65;
+
+        const bob = Math.abs(Math.sin(t * Math.PI * 2)) * 0.04;
+        mesh.position.y = bob;
+
+        const swing = Math.sin(t * Math.PI * 2) * 0.42;
+        const legs = mesh.userData.legs as THREE.Group[] | undefined;
+        if (legs) {
+          if (legs.length >= 4) {
+            legs[0].rotation.x =  swing;
+            legs[1].rotation.x = -swing;
+            legs[2].rotation.x = -swing;
+            legs[3].rotation.x =  swing;
+          } else if (legs.length === 2) {
+            legs[0].rotation.x =  swing;
+            legs[1].rotation.x = -swing;
+          }
+        }
+
+        renderer.render(scene, camera);
+        gl.endFrameEXP();
+      };
+      tick();
+    },
+    [charId]
+  );
+
+  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+
+  return (
+    <GLView key={charId} style={styles.previewGL} onContextCreate={onContextCreate} />
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GameScreen() {
   const webGLAvailable = useWebGLAvailable();
@@ -1148,6 +1238,7 @@ export default function GameScreen() {
   const [dailyAchClaimed, setDailyAchClaimed] = useState<Set<string>>(new Set());
   const [showAchievements, setShowAchievements] = useState(false);
   const [roundsToday, setRoundsToday] = useState(0);
+  const [previewChar, setPreviewChar] = useState<CharId | null>(null);
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
@@ -2051,7 +2142,7 @@ export default function GameScreen() {
       )}
 
       {/* Character Shop overlay */}
-      {showShop && (
+      {showShop && !previewChar && (
         <View style={styles.shopOverlay}>
           <Text style={styles.shopTitle}>🛒  PERSONAJES</Text>
           <Text style={styles.shopWallet}>💰 {totalCoins} monedas</Text>
@@ -2063,14 +2154,12 @@ export default function GameScreen() {
             {CHARACTERS.map((char) => {
               const owned    = unlockedChars.has(char.id);
               const selected = selectedChar === char.id;
-              const canBuy   = !owned && totalCoins >= char.cost;
               return (
-                <View
+                <TouchableOpacity
                   key={char.id}
-                  style={[
-                    styles.charCard,
-                    selected && styles.charCardSelected,
-                  ]}
+                  style={[styles.charCard, selected && styles.charCardSelected]}
+                  onPress={() => setPreviewChar(char.id)}
+                  activeOpacity={0.78}
                 >
                   <Text style={styles.charEmoji}>{char.emoji}</Text>
                   <View style={styles.charInfo}>
@@ -2080,47 +2169,12 @@ export default function GameScreen() {
                     ) : (
                       <Text style={styles.charCost}>🪙 {char.cost} monedas</Text>
                     )}
+                    <Text style={styles.charDescSnippet} numberOfLines={1}>
+                      {CHAR_DESC[char.id]}
+                    </Text>
                   </View>
-                  {owned ? (
-                    <TouchableOpacity
-                      style={[
-                        styles.charBtn,
-                        selected ? styles.charBtnActive : styles.charBtnSelect,
-                      ]}
-                      onPress={() => {
-                        setSelectedChar(char.id);
-                        setShowShop(false);
-                      }}
-                    >
-                      <Text style={styles.charBtnText}>
-                        {selected ? "✓ USANDO" : "USAR"}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.charBtn,
-                        canBuy ? styles.charBtnBuy : styles.charBtnLocked,
-                      ]}
-                      onPress={() => {
-                        if (!canBuy) return;
-                        setTotalCoins((prev) => prev - char.cost);
-                        setUnlockedChars((prev) => {
-                          const next = new Set(prev);
-                          next.add(char.id);
-                          return next;
-                        });
-                        setSelectedChar(char.id);
-                        setShowShop(false);
-                      }}
-                      disabled={!canBuy}
-                    >
-                      <Text style={styles.charBtnText}>
-                        {canBuy ? "COMPRAR" : "🔒"}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                  <Text style={styles.charArrow}>›</Text>
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
@@ -2132,6 +2186,69 @@ export default function GameScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Character detail / preview overlay */}
+      {showShop && previewChar && (() => {
+        const char = CHARACTERS.find((c) => c.id === previewChar)!;
+        const owned  = unlockedChars.has(char.id);
+        const active = selectedChar === char.id;
+        const canBuy = !owned && totalCoins >= char.cost;
+        return (
+          <View style={styles.shopOverlay}>
+            <TouchableOpacity
+              style={styles.previewBack}
+              onPress={() => setPreviewChar(null)}
+            >
+              <Text style={styles.shopBackText}>← PERSONAJES</Text>
+            </TouchableOpacity>
+
+            {/* 3-D animated preview */}
+            <CharacterPreviewGL charId={previewChar} />
+
+            <Text style={styles.previewName}>{char.emoji}  {char.name}</Text>
+            <Text style={styles.previewDesc}>{CHAR_DESC[char.id]}</Text>
+
+            <View style={styles.previewDivider} />
+
+            {owned ? (
+              <TouchableOpacity
+                style={[styles.startBtn, active && { backgroundColor: "#69f0ae" }]}
+                onPress={() => {
+                  setSelectedChar(char.id);
+                  setPreviewChar(null);
+                  setShowShop(false);
+                }}
+              >
+                <Text style={styles.startBtnText}>
+                  {active ? "✓ USANDO" : "USAR ESTE"}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.startBtn, !canBuy && { opacity: 0.45 }]}
+                onPress={() => {
+                  if (!canBuy) return;
+                  setTotalCoins((prev) => prev - char.cost);
+                  setUnlockedChars((prev) => {
+                    const next = new Set(prev);
+                    next.add(char.id);
+                    return next;
+                  });
+                  setSelectedChar(char.id);
+                  setPreviewChar(null);
+                  setShowShop(false);
+                }}
+                disabled={!canBuy}
+              >
+                <Text style={styles.startBtnText}>
+                  {canBuy ? `🪙 COMPRAR — ${char.cost}` : `🔒 ${char.cost} monedas`}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.shopWallet}>💰 tienes {totalCoins} monedas</Text>
+          </View>
+        );
+      })()}
 
       {/* D-pad */}
       {started && !gameOver && (
@@ -2432,6 +2549,54 @@ const styles = StyleSheet.create({
     color: "#FFD700",
     fontSize: 13,
     fontWeight: "700",
+  },
+  charDescSnippet: {
+    color: "#ffffff88",
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  charArrow: {
+    color: "#ffffff55",
+    fontSize: 28,
+    fontWeight: "300",
+    marginLeft: 6,
+  },
+  previewGL: {
+    width: "100%",
+    height: 210,
+    borderRadius: 18,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  previewBack: {
+    alignSelf: "flex-start",
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  previewName: {
+    color: "#FFD700",
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  previewDesc: {
+    color: "#ffffffcc",
+    fontSize: 14,
+    fontWeight: "500",
+    textAlign: "center",
+    paddingHorizontal: 28,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  previewDivider: {
+    height: 1,
+    width: "80%",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginVertical: 14,
   },
   charBtn: {
     borderRadius: 14,
