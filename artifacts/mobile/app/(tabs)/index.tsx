@@ -533,119 +533,138 @@ function makeTree(seed: number): THREE.Group {
 interface ChickenOpts { bodyColor?: number; wingColor?: number; }
 function makeChicken(opts?: ChickenOpts): THREE.Group {
   const g = new THREE.Group();
-  const yMat  = new THREE.MeshLambertMaterial({ color: opts?.bodyColor ?? C.chicken });
-  const wMat  = new THREE.MeshLambertMaterial({ color: opts?.wingColor ?? C.wing });
-  const bMat  = new THREE.MeshLambertMaterial({ color: C.beak });
-  const eMat  = new THREE.MeshLambertMaterial({ color: C.eye });
-  const cMat  = new THREE.MeshLambertMaterial({ color: C.comb });
-  const legMat = new THREE.MeshLambertMaterial({ color: C.leg });
+  const yMat       = new THREE.MeshLambertMaterial({ color: opts?.bodyColor ?? C.chicken });
+  const wMat       = new THREE.MeshLambertMaterial({ color: opts?.wingColor ?? C.wing });
+  const bMat       = new THREE.MeshLambertMaterial({ color: C.beak });
+  const eMat       = new THREE.MeshLambertMaterial({ color: C.eye });
+  const cMat       = new THREE.MeshLambertMaterial({ color: C.comb });
+  const legMat     = new THREE.MeshLambertMaterial({ color: C.leg });
   const eyeWhiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const bellyMat = new THREE.MeshLambertMaterial({ color: 0xfff8dc }); // cream belly
+  const bellyMat   = new THREE.MeshLambertMaterial({ color: 0xfff5cc });
 
-  // ── BODY — pear-shaped using a sphere scaled taller + slightly wider ──
+  // ── BODY — round pear, slightly squat ──
+  // Center y=0.32.  Top ≈ 0.32 + 0.3*1.15 = 0.665
   const bodyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), yMat);
-  bodyMesh.scale.set(1.05, 1.25, 1.0);
-  bodyMesh.position.y = 0.37;
+  bodyMesh.scale.set(1.0, 1.15, 0.96);
+  bodyMesh.position.y = 0.32;
   g.add(bodyMesh);
 
-  // belly patch (cream, front-facing flat oval)
+  // Belly patch — sits flush on the front face of the body
   const belly = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 7), bellyMat);
-  belly.scale.set(0.85, 1.1, 0.28);
-  belly.position.set(0, 0.34, 0.27);
+  belly.scale.set(0.82, 1.05, 0.28);
+  belly.position.set(0, 0.30, 0.27);
   g.add(belly);
 
-  // ── HEAD — round sphere ──
-  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), yMat);
-  headMesh.position.set(0, 0.77, 0.09);
+  // ── NECK — thick truncated cone bridging body top → head base ──
+  // Body top ≈ y=0.665.  Head center will be y=0.86.
+  // Neck center at y=0.74, z=0.06.  rotation.x=-0.22 tilts it slightly forward.
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.20, 8), yMat);
+  neck.rotation.x = -0.22;
+  neck.position.set(0, 0.72, 0.05);
+  g.add(neck);
+
+  // ── HEAD ──
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.20, 10, 8), yMat);
+  headMesh.position.set(0, 0.86, 0.10);
   g.add(headMesh);
 
-  // ── BEAK — orange cone pointing forward ──
-  const beakUpper = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.22, 7), bMat);
+  // ── BEAK ──
+  const beakUpper = new THREE.Mesh(new THREE.ConeGeometry(0.062, 0.20, 7), bMat);
   beakUpper.rotation.x = Math.PI / 2;
-  beakUpper.position.set(0, 0.78, 0.3);
+  beakUpper.position.set(0, 0.875, 0.29);
   g.add(beakUpper);
-  // lower jaw (slightly smaller, angled down a touch)
-  const beakLower = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.16, 7), bMat);
-  beakLower.rotation.x = Math.PI / 2 + 0.25;
-  beakLower.position.set(0, 0.735, 0.3);
+  const beakLower = new THREE.Mesh(new THREE.ConeGeometry(0.042, 0.14, 7), bMat);
+  beakLower.rotation.x = Math.PI / 2 + 0.28;
+  beakLower.position.set(0, 0.835, 0.29);
   g.add(beakLower);
 
-  // ── WATTLE — red teardrop under beak ──
-  const wattle = new THREE.Mesh(new THREE.SphereGeometry(0.065, 7, 7), cMat);
-  wattle.scale.set(1, 1.45, 1);
-  wattle.position.set(0, 0.68, 0.27);
+  // ── WATTLE ──
+  const wattle = new THREE.Mesh(new THREE.SphereGeometry(0.058, 7, 7), cMat);
+  wattle.scale.set(1, 1.5, 1);
+  wattle.position.set(0, 0.775, 0.26);
   g.add(wattle);
 
-  // ── EYES — white sphere + dark pupil ──
-  [-0.13, 0.13].forEach((ex) => {
-    const white = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), eyeWhiteMat);
-    white.position.set(ex, 0.79, 0.2);
+  // ── EYES ──
+  [-0.12, 0.12].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.062, 8, 7), eyeWhiteMat);
+    white.position.set(ex, 0.875, 0.20);
     g.add(white);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), eMat);
-    pupil.position.set(ex * 0.92, 0.79, 0.25);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.036, 7, 6), eMat);
+    pupil.position.set(ex * 0.92, 0.875, 0.245);
     g.add(pupil);
-    // catch-light dot
-    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.016, 5, 5), eyeWhiteMat);
-    shine.position.set(ex * 0.88 + 0.015, 0.806, 0.265);
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.015, 5, 5), eyeWhiteMat);
+    shine.position.set(ex * 0.88 + 0.014, 0.89, 0.258);
     g.add(shine);
   });
 
-  // ── COMB — 3 round bumps on top ──
-  [-0.07, 0, 0.07].forEach((cx, i) => {
-    const bump = new THREE.Mesh(new THREE.SphereGeometry(0.058 - i * 0.006, 7, 6), cMat);
-    bump.scale.y = 1.3;
-    bump.position.set(cx, 0.96 + i * 0.01, 0.04);
+  // ── COMB — 3 bumps decreasing forward ──
+  [{ cx: 0, cy: 1.055, cz: 0.02, r: 0.062 },
+   { cx: -0.055, cy: 1.04, cz: 0.04, r: 0.052 },
+   { cx:  0.055, cy: 1.04, cz: 0.04, r: 0.052 }].forEach(({ cx, cy, cz, r }) => {
+    const bump = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 6), cMat);
+    bump.scale.y = 1.35;
+    bump.position.set(cx, cy, cz);
     g.add(bump);
   });
 
-  // ── TAIL FEATHERS — fan of cones pointing upward/backward ──
-  [-0.12, 0, 0.12].forEach((tz, i) => {
-    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.3, 5), wMat);
-    feather.rotation.x = -(Math.PI / 2 + 0.8 + i * 0.07);
-    feather.rotation.z = tz * 1.2;
-    feather.position.set(tz * 0.5, 0.42 + Math.abs(i - 1) * 0.04, -0.28);
+  // ── TAIL FEATHERS — 5-feather fan, large & prominent ──
+  // Cones start from body-back (z≈-0.27) and fan upward-backward.
+  // rotation.x: -(π/2 + lean) makes the cone tip point backward+up.
+  const tailFan = [
+    { x: -0.24, y: 0.38, lean: 0.52, rz: -0.42 },
+    { x: -0.12, y: 0.42, lean: 0.68, rz: -0.20 },
+    { x:  0,    y: 0.45, lean: 0.82, rz:  0    },
+    { x:  0.12, y: 0.42, lean: 0.68, rz:  0.20 },
+    { x:  0.24, y: 0.38, lean: 0.52, rz:  0.42 },
+  ];
+  tailFan.forEach(({ x, y, lean, rz }) => {
+    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.092, 0.44, 5), wMat);
+    feather.rotation.x = -(Math.PI / 2 + lean);
+    feather.rotation.z = rz;
+    feather.position.set(x, y, -0.27);
     g.add(feather);
   });
 
-  // ── WINGS — flattened spheres on sides ──
+  // ── WINGS — ellipsoidal slabs hugging the body sides ──
   [-1, 1].forEach((side) => {
     const wing = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 7), wMat);
-    wing.scale.set(0.28, 0.72, 1.0);
-    wing.rotation.z = side * 0.18;
-    wing.position.set(side * 0.31, 0.37, -0.02);
+    wing.scale.set(0.26, 0.70, 1.02);
+    wing.rotation.z = side * 0.16;
+    wing.position.set(side * 0.30, 0.33, -0.02);
     g.add(wing);
-    // primary feather tips
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.2, 5), wMat);
-    tip.rotation.z = side * (Math.PI / 2 + 0.15);
-    tip.position.set(side * 0.38, 0.22, 0.0);
+    // primary feather tip
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.052, 0.19, 5), wMat);
+    tip.rotation.z = side * (Math.PI / 2 + 0.12);
+    tip.position.set(side * 0.37, 0.19, 0.0);
     g.add(tip);
   });
 
-  // ── LEGS — grouped for walk animation, pivot at hip (top of cylinder) ──
+  // ── LEGS — hip pivot embedded in body bottom ──
   const chickenLegs: THREE.Group[] = [];
-  [-0.14, 0.14].forEach((lx) => {
+  [-0.13, 0.13].forEach((lx) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.09, 0.0);  // hip = pivot
-    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.042, 0.2, 7), legMat);
-    thigh.position.set(0, -0.1, 0);   // top at y=0 (hip), bottom at y=-0.2
+    // Hip at y=0.16 embeds the leg top into the body (body bottom ≈ y=0.08)
+    lg.position.set(lx, 0.16, 0.02);
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.044, 0.22, 7), legMat);
+    thigh.position.set(0, -0.11, 0);
     lg.add(thigh);
-    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), legMat);
-    knee.position.set(0, -0.21, 0.02);
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.056, 6, 5), legMat);
+    knee.position.set(0, -0.23, 0.02);
     lg.add(knee);
-    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.028, 0.2, 6), legMat);
-    shin.rotation.x = 0.22;
-    shin.position.set(0, -0.32, 0.04);
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.028, 0.20, 6), legMat);
+    shin.rotation.x = 0.24;
+    shin.position.set(0, -0.34, 0.045);
     lg.add(shin);
-    [-0.065, 0.0, 0.065].forEach((tz2, ti) => {
+    [-0.062, 0.0, 0.062].forEach((tz2, ti) => {
       const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.012, 0.14, 5), legMat);
       toe.rotation.x = Math.PI / 2;
-      toe.rotation.z = (ti - 1) * 0.35;
-      toe.position.set((ti - 1) * 0.04, -0.43, 0.09 + tz2 * 0.3);
+      toe.rotation.z = (ti - 1) * 0.34;
+      toe.position.set((ti - 1) * 0.038, -0.45, 0.09 + tz2 * 0.28);
       lg.add(toe);
     });
-    const rearToe = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.01, 0.1, 5), legMat);
+    const rearToe = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.010, 0.10, 5), legMat);
     rearToe.rotation.x = -Math.PI / 2;
-    rearToe.position.set(0, -0.43, -0.06);
+    rearToe.position.set(0, -0.45, -0.065);
     lg.add(rearToe);
     g.add(lg);
     chickenLegs.push(lg);
@@ -668,98 +687,102 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   const innerEar = new THREE.MeshLambertMaterial({ color: 0xff8a80 });
   const bellyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
 
-  // ── BODY — horizontal pill: wide z (front-back), squat y ──
+  // ── BODY — horizontal pill ──
+  // Center y=0.30.  Vertical extent ≈ 0.30 ± 0.26*0.74 = [0.108, 0.492]
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), bodyMat);
-  body.scale.set(0.88, 0.72, 1.38);
-  body.position.set(0, 0.28, 0);
+  body.scale.set(0.88, 0.74, 1.40);
+  body.position.set(0, 0.30, 0);
   g.add(body);
 
-  // Belly patch (underside)
+  // Belly patch
   const belly = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), bellyMat);
-  belly.scale.set(0.7, 0.4, 1.1);
-  belly.position.set(0, 0.14, 0);
+  belly.scale.set(0.68, 0.38, 1.12);
+  belly.position.set(0, 0.16, 0);
   g.add(belly);
 
-  // ── NECK — short cylinder connecting body to head ──
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.15, 7), bodyMat);
-  neck.rotation.x = -0.55;
-  neck.position.set(0, 0.35, 0.28);
+  // ── NECK — thick stub, clearly bridging body→head ──
+  // Body front at z = 0.26*1.40 = 0.364.  Head center at (0, 0.46, 0.50).
+  // Neck center at (0, 0.38, 0.37), length 0.24, rotation.x=-0.62 tilts it forward.
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.24, 8), bodyMat);
+  neck.rotation.x = -0.62;
+  neck.position.set(0, 0.38, 0.37);
   g.add(neck);
 
-  // ── HEAD — round, at front (+z) ──
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), bodyMat);
-  head.position.set(0, 0.44, 0.42);
+  // ── HEAD ──
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), bodyMat);
+  head.position.set(0, 0.46, 0.50);
   g.add(head);
 
   // Ears + inner ears
-  [-0.12, 0.12].forEach((ex) => {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 5), bodyMat);
+  [-0.13, 0.13].forEach((ex) => {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.082, 0.19, 5), bodyMat);
     ear.rotation.z = ex < 0 ? -0.18 : 0.18;
-    ear.position.set(ex, 0.62, 0.41);
+    ear.position.set(ex, 0.655, 0.49);
     g.add(ear);
-    const inn = new THREE.Mesh(new THREE.ConeGeometry(0.044, 0.11, 5), innerEar);
+    const inn = new THREE.Mesh(new THREE.ConeGeometry(0.046, 0.12, 5), innerEar);
     inn.rotation.z = ex < 0 ? -0.18 : 0.18;
-    inn.position.set(ex * 0.9, 0.62, 0.425);
+    inn.position.set(ex * 0.9, 0.655, 0.505);
     g.add(inn);
   });
 
-  // Eyes — almond with slit pupil
-  [-0.1, 0.1].forEach((ex) => {
-    const white = new THREE.Mesh(new THREE.SphereGeometry(0.058, 8, 6), eyeWMat);
-    white.scale.set(1.25, 0.76, 0.6);
-    white.position.set(ex, 0.48, 0.6);
+  // Eyes
+  [-0.105, 0.105].forEach((ex) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.060, 8, 6), eyeWMat);
+    white.scale.set(1.22, 0.76, 0.60);
+    white.position.set(ex, 0.495, 0.675);
     g.add(white);
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.038, 7, 6), eyeMat);
-    iris.scale.set(1.1, 0.72, 0.65);
-    iris.position.set(ex, 0.48, 0.625);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.040, 7, 6), eyeMat);
+    iris.scale.set(1.08, 0.72, 0.65);
+    iris.position.set(ex, 0.495, 0.700);
     g.add(iris);
-    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.05, 0.03), pupilMat);
-    pupil.position.set(ex, 0.48, 0.638);
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.052, 0.030), pupilMat);
+    pupil.position.set(ex, 0.495, 0.714);
     g.add(pupil);
   });
 
   // Nose
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 5), noseMat);
-  nose.scale.set(1.3, 0.7, 0.8);
-  nose.position.set(0, 0.435, 0.618);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.033, 6, 5), noseMat);
+  nose.scale.set(1.28, 0.70, 0.80);
+  nose.position.set(0, 0.455, 0.692);
   g.add(nose);
 
   // Whiskers
   [-1, 1].forEach((side) => {
-    [-0.02, 0.02, 0.048].forEach((wy) => {
+    [-0.02, 0.018, 0.046].forEach((wy) => {
       const w = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.002, 0.24, 4), accMat);
       w.rotation.z = Math.PI / 2 + side * wy * 1.8;
-      w.position.set(side * 0.19, 0.428 + wy, 0.59);
+      w.position.set(side * 0.20, 0.448 + wy, 0.665);
       g.add(w);
     });
   });
 
-  // ── TAIL — arc curling up from the back (-z) ──
+  // ── TAIL — arc curling up from back ──
   for (let t = 0; t < 9; t++) {
-    const angle = (t / 8) * (Math.PI * 0.9);
+    const angle = (t / 8) * (Math.PI * 0.90);
     const seg = new THREE.Mesh(
       new THREE.SphereGeometry(0.062 - t * 0.004, 7, 6),
       t >= 7 ? accMat : bodyMat
     );
     seg.position.set(
       0,
-      0.18 + Math.sin(angle) * 0.28 + t * 0.025,
-      -0.32 - Math.cos(angle) * 0.28 - t * 0.01
+      0.20 + Math.sin(angle) * 0.30 + t * 0.024,
+      -0.36 - Math.cos(angle) * 0.30 - t * 0.010
     );
     g.add(seg);
   }
 
-  // ── 4 LEGS — grouped for walk animation (FL, FR, BL, BR), pivot at hip ──
+  // ── 4 LEGS — hip embedded in body bottom for solid connection ──
+  // Body bottom ≈ y=0.108.  Hip at y=0.17 means top of leg cylinder is 0.062 inside body.
   const catLegs: THREE.Group[] = [];
-  [[-0.15, 0.22], [0.15, 0.22], [-0.14, -0.22], [0.14, -0.22]].forEach(([lx, lz]) => {
+  [[-0.155, 0.24], [0.155, 0.24], [-0.145, -0.24], [0.145, -0.24]].forEach(([lx, lz]) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.1, lz);   // hip = pivot
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.042, 0.26, 7), bodyMat);
-    leg.position.set(0, -0.13, 0);  // top at y=0, bottom at y=-0.26
+    lg.position.set(lx, 0.17, lz);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.044, 0.28, 7), bodyMat);
+    leg.position.set(0, -0.14, 0);
     lg.add(leg);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.068, 7, 6), accMat);
-    paw.scale.set(1.1, 0.55, 1.2);
-    paw.position.set(0, -0.30, lz > 0 ? 0.04 : -0.02);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.070, 7, 6), accMat);
+    paw.scale.set(1.12, 0.52, 1.24);
+    paw.position.set(0, -0.32, lz > 0 ? 0.045 : -0.025);
     lg.add(paw);
     g.add(lg);
     catLegs.push(lg);
