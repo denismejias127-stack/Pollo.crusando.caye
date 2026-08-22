@@ -764,7 +764,12 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
     });
   });
 
-  // ── TAIL — arc curling up from back ──
+  // ── TAIL — connected curved tail from the rump ──
+  // The base overlaps the body so the tail never appears detached.
+  const tailRoot = new THREE.Mesh(new THREE.SphereGeometry(0.105, 8, 7), bodyMat);
+  tailRoot.scale.set(0.9, 1.0, 1.15);
+  tailRoot.position.set(0, 0.25, -0.335);
+  g.add(tailRoot);
   for (let t = 0; t < 9; t++) {
     const angle = (t / 8) * (Math.PI * 0.90);
     const seg = new THREE.Mesh(
@@ -773,8 +778,8 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
     );
     seg.position.set(
       0,
-      0.20 + Math.sin(angle) * 0.30 + t * 0.024,
-      -0.36 - Math.cos(angle) * 0.30 - t * 0.010
+      0.23 + Math.sin(angle) * 0.27 + t * 0.022,
+      -0.32 - Math.cos(angle) * 0.13 - t * 0.018
     );
     g.add(seg);
   }
@@ -881,7 +886,11 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
     g.add(ear);
   });
 
-  // ── TAIL — wagging arc from back ──
+  // ── TAIL — wagging arc rooted inside the rump ──
+  const tailRoot = new THREE.Mesh(new THREE.SphereGeometry(0.115, 8, 7), bodyMat);
+  tailRoot.scale.set(0.9, 1.0, 1.2);
+  tailRoot.position.set(0, 0.28, -0.345);
+  g.add(tailRoot);
   for (let t = 0; t < 7; t++) {
     const angle = (t / 6) * (Math.PI * 0.75);
     const seg = new THREE.Mesh(
@@ -890,8 +899,8 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
     );
     seg.position.set(
       0,
-      0.22 + Math.sin(angle) * 0.3 + t * 0.022,
-      -0.35 - Math.cos(angle) * 0.3 - t * 0.008
+      0.25 + Math.sin(angle) * 0.28 + t * 0.020,
+      -0.32 - Math.cos(angle) * 0.14 - t * 0.020
     );
     g.add(seg);
   }
@@ -987,13 +996,17 @@ function makePilbu(): THREE.Group {
     g.add(ear);
   });
 
-  // Tail — stubby curled up at the back
+  // Tail — stubby curled up at the back, with a visible connected root
+  const tailRoot = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 7), bodyMat);
+  tailRoot.scale.set(0.9, 1.0, 1.15);
+  tailRoot.position.set(0, 0.27, -0.35);
+  g.add(tailRoot);
   const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.18, 8), bodyMat);
   tailBase.rotation.x = -0.7;
-  tailBase.position.set(0, 0.34, -0.44);
+  tailBase.position.set(0, 0.34, -0.39);
   g.add(tailBase);
   const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 7), accMat);
-  tailTip.position.set(0, 0.46, -0.52);
+  tailTip.position.set(0, 0.46, -0.48);
   g.add(tailTip);
 
   // 4 grouped legs — pivot at hip, same pattern as cat/dog
