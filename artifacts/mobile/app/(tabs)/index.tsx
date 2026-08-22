@@ -610,15 +610,19 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
   // ── TAIL FEATHERS — 5-feather fan, large & prominent ──
   // Cones start from body-back (z≈-0.27) and fan upward-backward.
   // rotation.x: -(π/2 + lean) makes the cone tip point backward+up.
+  const tailBase = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), wMat);
+  tailBase.scale.set(1.35, 0.8, 0.8);
+  tailBase.position.set(0, 0.38, -0.255);
+  g.add(tailBase);
   const tailFan = [
-    { x: -0.24, y: 0.38, lean: 0.52, rz: -0.42 },
-    { x: -0.12, y: 0.42, lean: 0.68, rz: -0.20 },
-    { x:  0,    y: 0.45, lean: 0.82, rz:  0    },
-    { x:  0.12, y: 0.42, lean: 0.68, rz:  0.20 },
-    { x:  0.24, y: 0.38, lean: 0.52, rz:  0.42 },
+    { x: -0.24, y: 0.40, lean: 0.48, rz: -0.42 },
+    { x: -0.12, y: 0.45, lean: 0.62, rz: -0.20 },
+    { x:  0,    y: 0.48, lean: 0.76, rz:  0    },
+    { x:  0.12, y: 0.45, lean: 0.62, rz:  0.20 },
+    { x:  0.24, y: 0.40, lean: 0.48, rz:  0.42 },
   ];
   tailFan.forEach(({ x, y, lean, rz }) => {
-    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.092, 0.44, 5), wMat);
+    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.50, 5), wMat);
     feather.rotation.x = -(Math.PI / 2 + lean);
     feather.rotation.z = rz;
     feather.position.set(x, y, -0.27);
@@ -644,7 +648,10 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
   [-0.13, 0.13].forEach((lx) => {
     const lg = new THREE.Group();
     // Hip at y=0.16 embeds the leg top into the body (body bottom ≈ y=0.08)
-    lg.position.set(lx, 0.16, 0.02);
+    lg.position.set(lx, 0.18, 0.02);
+    const hip = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), legMat);
+    hip.position.y = -0.015;
+    lg.add(hip);
     const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.044, 0.22, 7), legMat);
     thigh.position.set(0, -0.11, 0);
     lg.add(thigh);
@@ -703,7 +710,8 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   // ── NECK — thick stub, clearly bridging body→head ──
   // Body front at z = 0.26*1.40 = 0.364.  Head center at (0, 0.46, 0.50).
   // Neck center at (0, 0.38, 0.37), length 0.24, rotation.x=-0.62 tilts it forward.
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.24, 8), bodyMat);
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), bodyMat);
+  neck.scale.set(0.9, 0.9, 1.05);
   neck.rotation.x = -0.62;
   neck.position.set(0, 0.38, 0.37);
   g.add(neck);
@@ -776,7 +784,11 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   const catLegs: THREE.Group[] = [];
   [[-0.155, 0.24], [0.155, 0.24], [-0.145, -0.24], [0.145, -0.24]].forEach(([lx, lz]) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.17, lz);
+    lg.position.set(lx, 0.20, lz);
+    const hip = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), bodyMat);
+    hip.scale.set(1.0, 0.85, 0.9);
+    hip.position.y = -0.015;
+    lg.add(hip);
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.044, 0.28, 7), bodyMat);
     leg.position.set(0, -0.14, 0);
     lg.add(leg);
@@ -817,7 +829,8 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
   g.add(belly);
 
   // ── NECK ──
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.18, 7), bodyMat);
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), bodyMat);
+  neck.scale.set(0.9, 0.9, 1.05);
   neck.rotation.x = -0.6;
   neck.position.set(0, 0.38, 0.3);
   g.add(neck);
@@ -887,7 +900,11 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
   const dogLegs: THREE.Group[] = [];
   [[-0.17, 0.24], [0.17, 0.24], [-0.16, -0.25], [0.16, -0.25]].forEach(([lx, lz]) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.12, lz);  // hip = pivot
+    lg.position.set(lx, 0.19, lz);  // hip = pivot, embedded in the body
+    const hip = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), bodyMat);
+    hip.scale.set(1.0, 0.85, 0.95);
+    hip.position.y = -0.02;
+    lg.add(hip);
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.048, 0.28, 7), bodyMat);
     leg.position.set(0, -0.14, 0);  // top at y=0, bottom at y=-0.28
     lg.add(leg);
@@ -926,7 +943,8 @@ function makePilbu(): THREE.Group {
   g.add(tummy);
 
   // Neck
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.14, 8), bodyMat);
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), bodyMat);
+  neck.scale.set(0.9, 0.86, 1.05);
   neck.position.set(0, 0.26, 0.29);
   g.add(neck);
 
@@ -982,7 +1000,11 @@ function makePilbu(): THREE.Group {
   const pilbuLegs: THREE.Group[] = [];
   [[-0.16, 0.22], [0.16, 0.22], [-0.15, -0.24], [0.15, -0.24]].forEach(([lx, lz]) => {
     const lg = new THREE.Group();
-    lg.position.set(lx, 0.1, lz);
+    lg.position.set(lx, 0.17, lz);
+    const hip = new THREE.Mesh(new THREE.SphereGeometry(0.082, 8, 6), bodyMat);
+    hip.scale.set(1.0, 0.85, 0.95);
+    hip.position.y = -0.015;
+    lg.add(hip);
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.22, 8), bodyMat);
     leg.position.set(0, -0.11, 0);
     lg.add(leg);
