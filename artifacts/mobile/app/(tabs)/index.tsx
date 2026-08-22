@@ -558,10 +558,15 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
   // ── NECK — thick truncated cone bridging body top → head base ──
   // Body top ≈ y=0.665.  Head center will be y=0.86.
   // Neck center at y=0.74, z=0.06.  rotation.x=-0.22 tilts it slightly forward.
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.20, 8), yMat);
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.15, 9, 7), yMat);
+  neck.scale.set(0.92, 0.95, 1.05);
   neck.rotation.x = -0.22;
   neck.position.set(0, 0.72, 0.05);
   g.add(neck);
+  const breast = new THREE.Mesh(new THREE.SphereGeometry(0.20, 9, 7), yMat);
+  breast.scale.set(0.92, 0.9, 0.72);
+  breast.position.set(0, 0.46, 0.16);
+  g.add(breast);
 
   // ── HEAD ──
   const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.20, 10, 8), yMat);
@@ -715,6 +720,10 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   neck.rotation.x = -0.62;
   neck.position.set(0, 0.38, 0.37);
   g.add(neck);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.18, 9, 7), bodyMat);
+  chest.scale.set(0.92, 0.82, 1.05);
+  chest.position.set(0, 0.30, 0.25);
+  g.add(chest);
 
   // ── HEAD ──
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), bodyMat);
@@ -723,6 +732,10 @@ function makeCat(bodyColor: number, accentColor: number): THREE.Group {
 
   // Ears + inner ears
   [-0.13, 0.13].forEach((ex) => {
+    const earBase = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 6), bodyMat);
+    earBase.scale.set(0.9, 0.65, 0.75);
+    earBase.position.set(ex, 0.58, 0.48);
+    g.add(earBase);
     const ear = new THREE.Mesh(new THREE.ConeGeometry(0.082, 0.19, 5), bodyMat);
     ear.rotation.z = ex < 0 ? -0.18 : 0.18;
     ear.position.set(ex, 0.655, 0.49);
@@ -839,6 +852,10 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
   neck.rotation.x = -0.6;
   neck.position.set(0, 0.38, 0.3);
   g.add(neck);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.20, 9, 7), bodyMat);
+  chest.scale.set(0.95, 0.82, 1.08);
+  chest.position.set(0, 0.30, 0.25);
+  g.add(chest);
 
   // ── HEAD — bigger/rounder than cat ──
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bodyMat);
@@ -879,6 +896,10 @@ function makeDog(bodyColor: number, accentColor: number): THREE.Group {
 
   // Floppy ears — rounded rectangles hanging at sides of head
   [-0.26, 0.26].forEach((ex) => {
+    const earBase = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), accMat);
+    earBase.scale.set(0.9, 0.8, 0.75);
+    earBase.position.set(ex, 0.46, 0.47);
+    g.add(earBase);
     const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 7), accMat);
     ear.scale.set(0.72, 1.55, 0.35);
     ear.rotation.z = ex < 0 ? 0.12 : -0.12;
@@ -956,6 +977,10 @@ function makePilbu(): THREE.Group {
   neck.scale.set(0.9, 0.86, 1.05);
   neck.position.set(0, 0.26, 0.29);
   g.add(neck);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.17, 9, 7), bodyMat);
+  chest.scale.set(0.95, 0.85, 1.0);
+  chest.position.set(0, 0.23, 0.22);
+  g.add(chest);
 
   // Head
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), bodyMat);
