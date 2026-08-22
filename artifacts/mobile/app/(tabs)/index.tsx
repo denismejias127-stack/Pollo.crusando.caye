@@ -348,6 +348,35 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
     });
   }
 
+  // ── Extra vehicle detail: grille, door handles and lower rocker ──────────
+  // Small high-contrast details make the cars read as vehicles at game scale.
+  const darkMat = new THREE.MeshLambertMaterial({ color: 0x263238 });
+  const grille = new THREE.Mesh(
+    new THREE.BoxGeometry(0.035, 0.11, dep * 0.42),
+    darkMat
+  );
+  grille.position.set(frontX * 1.005, 0.25, 0);
+  g.add(grille);
+
+  const rocker = new THREE.Mesh(
+    new THREE.BoxGeometry(len * 0.72, 0.045, dep * 1.015),
+    darkMat
+  );
+  rocker.position.y = 0.10;
+  g.add(rocker);
+
+  // Two tiny handles on each side, placed just below the windows.
+  [-dep / 2 - 0.025, dep / 2 + 0.025].forEach((zSide) => {
+    [-len * 0.12, len * 0.16].forEach((xSide) => {
+      const handle = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.025, 0.018),
+        chromeMat
+      );
+      handle.position.set(xSide, 0.48, zSide);
+      g.add(handle);
+    });
+  });
+
   // ── SHARED: bumpers, lights, wheels ──────────────────────────────────────
 
   // front bumper (chrome)
@@ -1792,6 +1821,11 @@ export default function GameScreen() {
         antialias: true,
       });
       renderer.setSize(w, h);
+      renderer.autoClear = true;
+      // Explicit clear is important on Expo Go after a GL context is
+      // recreated; otherwise the first frames can remain black.
+      gl.clearColor(0.529, 0.808, 0.922, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       s.renderer = renderer;
@@ -2014,6 +2048,8 @@ export default function GameScreen() {
         }
 
         if (s.renderer && s.scene && s.camera) {
+           // Keep the mobile framebuffer alive even when the app resumes
+           // from audio/background state.
           s.renderer.render(s.scene, s.camera);
         }
         gl.endFrameEXP();
