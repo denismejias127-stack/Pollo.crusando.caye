@@ -1280,8 +1280,12 @@ function CharacterPreviewGL({ charId }: { charId: CharId }) {
         animRef.current = requestAnimationFrame(tick);
         const t = (Date.now() - start) / 1000;
         mesh.rotation.y = t * 0.65;
-        mesh.position.y = Math.abs(Math.sin(t * Math.PI * 2)) * 0.04;
-        const swing = Math.sin(t * Math.PI * 2) * 0.42;
+        // Soft anime-style breathing and a gentle "alive" sway.
+        const breath = 1 + Math.sin(t * Math.PI * 2) * 0.025;
+        mesh.scale.set(1.05 * breath, 1.05 / breath, 1.05 * breath);
+        mesh.position.y = Math.abs(Math.sin(t * Math.PI * 2)) * 0.035;
+        mesh.rotation.z = Math.sin(t * Math.PI * 2) * 0.025;
+        const swing = Math.sin(t * Math.PI * 2) * 0.32;
         const legs = mesh.userData.legs as THREE.Group[] | undefined;
         if (legs) {
           if (legs.length >= 4) {
@@ -1347,6 +1351,7 @@ function ThumbnailMinter({
 
       const mesh = makePlayerMesh(charId);
       mesh.rotation.y = Math.PI / 5;
+      mesh.rotation.z = -0.035;
       scene.add(mesh);
 
       renderer.render(scene, camera);
@@ -1904,7 +1909,12 @@ export default function GameScreen() {
             const legs = s.playerMesh.userData.legs as THREE.Group[] | undefined;
             if (legs && legs.length > 0) {
               // One full gait cycle per step: matches the double-bob above
-              const swing = Math.sin(t * Math.PI * 2) * 0.75;
+              // Rounded, springy gait instead of stiff mechanical legs.
+              const gait = Math.sin(t * Math.PI * 2);
+              const swing = gait * 0.52;
+              const breathing = 1 + Math.sin(t * Math.PI * 2) * 0.018;
+              s.playerMesh.scale.set(0.48 * breathing, 0.48 / breathing, 0.48 * breathing);
+              s.playerMesh.rotation.z = Math.sin(t * Math.PI * 2) * 0.035;
               if (legs.length >= 4) {
                 // Diagonal gait: FL+BR swing forward, FR+BL swing back
                 legs[0].rotation.x =  swing;  // front-left
@@ -1957,8 +1967,12 @@ export default function GameScreen() {
         // ── Idle animation: gentle sway when standing still ──
         else if (!s.hop.active && s.playerMesh && !s.dead) {
           const idleT = now * 0.0022;
-          s.playerMesh.rotation.z = Math.sin(idleT) * 0.06;
-          s.playerMesh.position.y = Math.sin(idleT * 1.3) * 0.015;
+            // Cute idle: breathe, shift weight, and make the animal feel present.
+            const breathing = 1 + Math.sin(idleT * 1.35) * 0.022;
+            s.playerMesh.scale.set(0.48 * breathing, 0.48 / breathing, 0.48 * breathing);
+            s.playerMesh.rotation.z = Math.sin(idleT) * 0.045;
+            s.playerMesh.rotation.y = Math.sin(idleT * 0.72) * 0.035;
+            s.playerMesh.position.y = Math.sin(idleT * 1.3) * 0.018;
         }
 
         // ── Coin spin + bob animation ──
