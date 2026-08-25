@@ -159,6 +159,11 @@ function getDateKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
+function rowsText(value: number): string {
+  if (value === 1) return "una fila";
+  if (value === 2) return "dos filas";
+  return `${value} filas`;
+}
 function getDailyAchievements(): AchievementDef[] {
   const dayNum = Math.floor(Date.now() / 86_400_000);
   return [
@@ -1389,7 +1394,8 @@ function ThumbnailMinter({
       if (!doneRef.current) {
         doneRef.current = true;
         // Wait one frame so the native buffer is flushed before snapshot
-        await new Promise<void>((r) => setTimeout(r, 120));
+        // A short flush is enough on Expo Go and keeps the shop responsive.
+        await new Promise<void>((r) => setTimeout(r, 24));
         try {
           const snap = await GLView.takeSnapshotAsync(gl, { format: "jpeg", compress: 0.85 });
           onDone(charId, typeof snap.uri === "string" ? snap.uri : "");
@@ -1425,6 +1431,7 @@ export default function GameScreen() {
   const [showShop, setShowShop] = useState(false);
   const [muted, setMuted] = useState(false);
   const [highScore, setHighScore] = useState(0);
+  const [recordMessage, setRecordMessage] = useState("");
   const [dailyRewardClaimed, setDailyRewardClaimed] = useState(false);
   const [dailyAchProgress, setDailyAchProgress] = useState<Record<string, number>>({});
   const [dailyAchClaimed, setDailyAchClaimed] = useState<Set<string>>(new Set());
@@ -1456,7 +1463,12 @@ export default function GameScreen() {
 
   // ── Thumbnail minting: generate shop card images the first time shop opens ──
   const handleMintDone = useCallback((charId: CharId, uri: string) => {
-    if (uri) setCharThumbnails((prev) => ({ ...prev, [charId]: uri }));
+    if (uri) {
+      setCharThumbnails((prev) => ({ ...prev, [charId]: uri }));
+      // Keep the generated shop image so future launches do not need to
+      // recreate every WebGL thumbnail before the player can enter the shop.
+      AsyncStorage.setItem(`pollo_thumb_${charId}`, uri).catch(() => {});
+    }
     const next = mintQueueRef.current.shift();
     if (next) {
       setMintingChar(next);
@@ -1544,9 +1556,10 @@ export default function GameScreen() {
     AsyncStorage.multiGet([
       "pollo_coins", "pollo_unlocked", "pollo_selected", "pollo_high",
       "pollo_day_key", "pollo_day_reward", "pollo_day_progress", "pollo_day_claimed", "pollo_day_rounds",
+      ...CHARACTERS.map((char) => `pollo_thumb_${char.id}`),
     ]).then((entries) => {
         const [coinsE, unlockedE, selectedE, highE,
-               dayKeyE, rewardE, progressE, claimedE, roundsE] = entries;
+                dayKeyE, rewardE, progressE, claimedE, roundsE, ...thumbEntries] = entries;
         if (coinsE[1]) setTotalCoins(parseInt(coinsE[1], 10) || 0);
         if (unlockedE[1]) {
           try {
@@ -1556,6 +1569,14 @@ export default function GameScreen() {
         }
         if (selectedE[1]) setSelectedChar(selectedE[1] as CharId);
         if (highE[1]) setHighScore(parseInt(highE[1], 10) || 0);
+         const savedThumbs: Partial<Record<CharId, string>> = {};
+         thumbEntries.forEach(([key, value]) => {
+           if (value) {
+             const id = key.replace("pollo_thumb_", "") as CharId;
+             savedThumbs[id] = value;
+           }
+         });
+         if (Object.keys(savedThumbs).length > 0) setCharThumbnails(savedThumbs);
         // Daily data — restore only if saved today
         const todayKey = getDateKey();
         if (dayKeyE[1] === todayKey) {
@@ -1578,7 +1599,13 @@ export default function GameScreen() {
     if (!gameOver) return;
     const roundCoins = stateRef.current.coinScore;
     const beatsRecord = score > highScore;
-    if (beatsRecord) setHighScore(score);
+    if (beatsRecord) {
+      setHighScore(score);
+      setRecordMessage(highScore > 0 ? "🏆 ¡Rompiste tu récord!" : `✨ Ganaste ${rowsText(score)}`);
+    } else {
+      // Ties and lower scores stay quiet: no negative record message.
+      setRecordMessage("");
+    }
     setRoundsToday((prevRounds) => {
       const newRounds = prevRounds + 1;
       setDailyAchProgress((prev) => {
@@ -1593,7 +1620,7 @@ export default function GameScreen() {
       });
       return newRounds;
     });
-  }, [gameOver, score, highScore]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameOver, score]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Save wallet + unlocks whenever they change (after initial load) ────────
   useEffect(() => {
@@ -2295,8 +2322,8 @@ export default function GameScreen() {
           <Text style={styles.gameOverSub}>¡Fue atropellado!</Text>
           <Text style={styles.gameOverScore}>{score}</Text>
           <Text style={styles.gameOverLabel}>filas cruzadas</Text>
-          {score > 0 && score >= highScore && (
-            <Text style={styles.newRecordText}>🏆 ¡Nuevo récord!</Text>
+          {recordMessage !== "" && (
+            <Text style={styles.newRecordText}>{recordMessage}</Text>
           )}
           {score < highScore && (
             <Text style={styles.gameOverCoinText}>🏆 Récord: {highScore}</Text>
