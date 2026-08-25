@@ -242,7 +242,7 @@ function setShadow(obj: THREE.Object3D, cast = true, receive = true) {
 }
 
 /** Cars travel along X. All cars on a row share the same speed → no overlapping. */
-function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
+function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): CarObj {
   const g = new THREE.Group();
   const isTruck = Math.random() < 0.22;
   const len = isTruck ? 2.5 + Math.random() * 0.4 : 1.6 + Math.random() * 0.7;
@@ -250,6 +250,9 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
   const colorHex = C.carColors[Math.floor(Math.random() * C.carColors.length)];
   const mat = new THREE.MeshLambertMaterial({ color: colorHex });
   const chromeMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+  const headlightMat = night
+    ? new THREE.MeshPhongMaterial({ color: 0xfff2a3, emissive: 0xffb300, shininess: 100 })
+    : MAT.headlight;
 
   const frontX = dir > 0 ? len / 2 : -(len / 2);
   const backX  = dir > 0 ? -(len / 2) : len / 2;
@@ -404,14 +407,19 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
 
   // headlights — two rectangular units
   [-dep * 0.28, dep * 0.28].forEach((lz) => {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.16), MAT.headlight);
+     const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.16), headlightMat);
     hl.position.set(frontX * 0.96, 0.32, lz);
     g.add(hl);
     // DRL strip above headlight
-    const drl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.14), MAT.headlight);
+     const drl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.14), headlightMat);
     drl.position.set(frontX * 0.96, 0.46, lz);
     g.add(drl);
   });
+  if (night) {
+    const lamp = new THREE.PointLight(0xffd36b, 0.7, 2.5);
+    lamp.position.set(frontX * 1.05, 0.34, 0);
+    g.add(lamp);
+  }
   // taillights (red L-shape)
   [-dep * 0.28, dep * 0.28].forEach((lz) => {
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.2), MAT.taillight);
@@ -471,7 +479,7 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number): CarObj {
 }
 
 /** Pitched roof house with chimney, door, windows, hedge. */
-function makeHouse(seed: number): THREE.Group {
+function makeHouse(seed: number, night = false): THREE.Group {
   const g = new THREE.Group();
   const wallColor = C.houseWall[seed % C.houseWall.length];
   const roofColor = C.houseRoof[seed % C.houseRoof.length];
@@ -521,7 +529,9 @@ function makeHouse(seed: number): THREE.Group {
   g.add(knob);
 
   // windows
-  const winMat = new THREE.MeshLambertMaterial({ color: C.windowGlass });
+  const winMat = night
+    ? new THREE.MeshPhongMaterial({ color: 0xffc857, emissive: 0xff8f00, shininess: 80 })
+    : new THREE.MeshLambertMaterial({ color: C.windowGlass });
   const frameMat = new THREE.MeshLambertMaterial({ color: C.windowFrame });
   [-w * 0.27, w * 0.27].forEach((wx2, i) => {
     if (i === 0 && w < 1.15) return;
@@ -534,6 +544,11 @@ function makeHouse(seed: number): THREE.Group {
     glass.position.set(wx2, h * 0.58, d / 2 + 0.04);
     g.add(glass);
   });
+  if (night) {
+    const porchLight = new THREE.PointLight(0xffb347, 0.45, 2.4);
+    porchLight.position.set(0, h * 0.62, d / 2 + 0.18);
+    g.add(porchLight);
+  }
 
   // small hedge in front of house
   const hedge = new THREE.Mesh(new THREE.BoxGeometry(w * 0.85, 0.22, 0.18), MAT.hedge);
@@ -1267,14 +1282,16 @@ function makeCoin(): THREE.Group {
 }
 
 /** Grass row — houses or trees on sides plus sidewalk strip. */
-function makeGrassRow(rowIdx: number): THREE.Group {
+function makeGrassRow(rowIdx: number, night = false): THREE.Group {
   const g = new THREE.Group();
 
   // ground
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(BOARD_HALF * 2 + 6, 0.18, CELL),
     new THREE.MeshLambertMaterial({
-      color: rowIdx % 2 === 0 ? C.grass : C.grassAlt,
+       color: night
+         ? (rowIdx % 2 === 0 ? 0x173d2b : 0x123323)
+         : (rowIdx % 2 === 0 ? C.grass : C.grassAlt),
     })
   );
   base.position.y = -0.09;
@@ -1296,7 +1313,7 @@ function makeGrassRow(rowIdx: number): THREE.Group {
       { side: 1, seed: rowIdx * 2 + 1 },
     ].forEach(({ side, seed }) => {
       const useTree = seed % 3 === 0; // every third slot is a tree
-      const obj = useTree ? makeTree(seed) : makeHouse(seed);
+       const obj = useTree ? makeTree(seed) : makeHouse(seed, night);
       obj.position.set(side * (BOARD_HALF + 2.2), 0, 0);
       g.add(obj);
     });
@@ -1306,13 +1323,13 @@ function makeGrassRow(rowIdx: number): THREE.Group {
   return g;
 }
 
-function makeRoadRow(rowIdx: number): THREE.Group {
+function makeRoadRow(rowIdx: number, night = false): THREE.Group {
   const g = new THREE.Group();
 
   // asphalt base — finite width, NOT infinite
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(ROAD_HALF * 2, 0.12, CELL),
-    new THREE.MeshLambertMaterial({ color: C.road })
+     new THREE.MeshLambertMaterial({ color: night ? 0x202633 : C.road })
   );
   base.receiveShadow = true;
   g.add(base);
@@ -1329,7 +1346,7 @@ function makeRoadRow(rowIdx: number): THREE.Group {
   for (let i = -BOARD_HALF + 0.5; i <= BOARD_HALF - 0.5; i += 1.6) {
     const dash = new THREE.Mesh(
       new THREE.BoxGeometry(0.85, 0.01, 0.06),
-      new THREE.MeshLambertMaterial({ color: C.roadLine })
+     new THREE.MeshLambertMaterial({ color: night ? 0xc6d4e8 : C.roadLine })
     );
     dash.position.set(i, 0.07, 0.3);
     g.add(dash);
@@ -1369,7 +1386,7 @@ function makeRoadRow(rowIdx: number): THREE.Group {
     // Grass shoulder beyond road edge
     const shoulder = new THREE.Mesh(
       new THREE.BoxGeometry(1.4, 0.1, CELL + 0.5),
-      new THREE.MeshLambertMaterial({ color: C.grass })
+       new THREE.MeshLambertMaterial({ color: night ? 0x173d2b : C.grass })
     );
     shoulder.position.set(edgeX + side * 0.79, -0.01, 0);
     shoulder.receiveShadow = true;
@@ -1812,6 +1829,9 @@ export default function GameScreen() {
 
   const [coins, setCoins] = useState(0);
   const [cameraMode, setCameraMode] = useState<CameraMode>("exterior");
+  const [nightMode, setNightMode] = useState(false);
+  const nightModeRef = useRef(false);
+  nightModeRef.current = nightMode;
 
   // ── Free-look refs for interior first-person mode ──
   const camYawRef   = useRef(0);   // horizontal rotation (radians)
@@ -1872,9 +1892,9 @@ export default function GameScreen() {
       const cars: CarObj[] = [];
 
       if (kind === "grass") {
-        mesh = makeGrassRow(idx);
+        mesh = makeGrassRow(idx, nightModeRef.current);
       } else {
-        mesh = makeRoadRow(idx);
+        mesh = makeRoadRow(idx, nightModeRef.current);
         const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
         // All cars on same row share same speed → they never catch up to each other
         const rowSpeed = 1.8 + Math.random() * 2.8;
@@ -1883,7 +1903,7 @@ export default function GameScreen() {
         const loopWidth = (BOARD_HALF + 3) * 2;
         const spacing = loopWidth / numCars;
         for (let c = 0; c < numCars; c++) {
-          const car = makeCar(dir, -idx * CELL, rowSpeed);
+          const car = makeCar(dir, -idx * CELL, rowSpeed, nightModeRef.current);
           car.x =
             dir === 1
               ? -(BOARD_HALF + 2) - c * spacing
@@ -1989,9 +2009,11 @@ export default function GameScreen() {
       s.renderer = renderer;
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(C.sky);
+       const night = nightModeRef.current;
+       const skyColor = night ? 0x071329 : C.sky;
+       scene.background = new THREE.Color(skyColor);
       // fog starts close so the tile edges are never visible
-      scene.fog = new THREE.Fog(C.sky, 14, 28);
+       scene.fog = new THREE.Fog(skyColor, 14, 28);
       s.scene = scene;
 
       const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 80);
@@ -2000,13 +2022,17 @@ export default function GameScreen() {
       s.camera = camera;
 
       // Soft ambient fill
-      scene.add(new THREE.AmbientLight(0xd0e8ff, 0.65));
+       scene.add(new THREE.AmbientLight(night ? 0x536b9b : 0xd0e8ff, night ? 0.28 : 0.65));
       // Hemisphere sky/ground light for realistic outdoor feel
-      const hemi = new THREE.HemisphereLight(0x87ceeb, 0x4caf50, 0.45);
+       const hemi = new THREE.HemisphereLight(
+         night ? 0x263b70 : 0x87ceeb,
+         night ? 0x10251d : 0x4caf50,
+         night ? 0.28 : 0.45
+       );
       scene.add(hemi);
       // Main sun — casts shadows
-      const sun = new THREE.DirectionalLight(0xfff5e0, 1.1);
-      sun.position.set(6, 14, 8);
+       const sun = new THREE.DirectionalLight(night ? 0x8faeff : 0xfff5e0, night ? 0.42 : 1.1);
+       sun.position.set(6, 14, 8);
       sun.castShadow = true;
       sun.shadow.mapSize.width = 512;
       sun.shadow.mapSize.height = 512;
@@ -2022,7 +2048,7 @@ export default function GameScreen() {
       // ── Infinite ground plane — follows player so edges never show ──
       const groundPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(300, 600),
-        new THREE.MeshLambertMaterial({ color: C.grass })
+         new THREE.MeshLambertMaterial({ color: night ? 0x173d2b : C.grass })
       );
       groundPlane.rotation.x = -Math.PI / 2;
       groundPlane.position.set(0, -0.11, -60);
@@ -2424,6 +2450,18 @@ export default function GameScreen() {
             onPress={() => setStarted(true)}
           >
             <Text style={styles.startBtnText}>JUGAR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.nightBtn, nightMode && styles.nightBtnActive]}
+            onPress={() => setNightMode((n) => !n)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.nightBtnText}>
+              {nightMode ? "☀️  MODO DÍA" : "🌙  MODO NOCHE"}
+            </Text>
+            <Text style={styles.nightBtnHint}>
+              {nightMode ? "Luz del día y tráfico visible" : "Faros y casas encendidas"}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
@@ -2843,6 +2881,32 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#222",
     letterSpacing: 2,
+  },
+  nightBtn: {
+    marginTop: 2,
+    minWidth: 230,
+    alignItems: "center",
+    backgroundColor: "rgba(18,32,70,0.82)",
+    borderRadius: 22,
+    paddingHorizontal: 22,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "rgba(157,185,255,0.55)",
+  },
+  nightBtnActive: {
+    backgroundColor: "rgba(116,76,18,0.9)",
+    borderColor: "#ffd86b",
+  },
+  nightBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  nightBtnHint: {
+    color: "#dbe5ff",
+    fontSize: 10,
+    marginTop: 3,
   },
   gameOverTitle: {
     fontSize: 44,
