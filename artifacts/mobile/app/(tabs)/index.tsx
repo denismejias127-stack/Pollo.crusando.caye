@@ -120,8 +120,8 @@ const CHARACTERS = [
   { id: "dog_avocado",  name: "Perro Aguacatero",cost: 200, emoji: "🥑", type: "dog"     as const, bodyColor: 0x558b2f, accentColor: 0x1b5e20 },
   { id: "dog_shepherd", name: "Pastor Alemán",   cost: 300, emoji: "🐕", type: "dog"     as const, bodyColor: 0xd4a017, accentColor: 0x2e1a0e },
   { id: "pilbu",        name: "Pilbu",           cost: 500, emoji: "👾", type: "pilbu"   as const, bodyColor: 0x7c4dff, accentColor: 0xea80fc },
-  { id: "duck_muscovy", name: "Pato Moscoví",     cost: 350, emoji: "🦆", type: "duck"    as const, bodyColor: 0x30343b, accentColor: 0x8d99ae },
-  { id: "duck_golden",  name: "Pato Dorado",      cost: 450, emoji: "🦆", type: "duck"    as const, bodyColor: 0xf6bd2f, accentColor: 0xe58f0e },
+  { id: "duck_muscovy", name: "Pato Moscoví",     cost: 500, emoji: "🦆", type: "duck"    as const, bodyColor: 0x30343b, accentColor: 0x8d99ae },
+  { id: "duck_golden",  name: "Pato Dorado",      cost: 600, emoji: "🦆", type: "duck"    as const, bodyColor: 0xf6bd2f, accentColor: 0xe58f0e },
 ] as const;
 type CharId = typeof CHARACTERS[number]["id"];
 
@@ -733,8 +733,15 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
 /** Friendly low-poly duck: rounded body, connected neck, bill, wings and webbed feet. */
 function makeDuck(bodyColor: number, accentColor: number): THREE.Group {
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
-  const accentMat = new THREE.MeshLambertMaterial({ color: accentColor });
+  const isGolden = bodyColor === 0xf6bd2f;
+  // The golden duck uses a glossy material so it reads as a special unlock,
+  // rather than a regular duck painted yellow.
+  const bodyMat = isGolden
+    ? new THREE.MeshPhongMaterial({ color: bodyColor, specular: 0xfff4b0, shininess: 120 })
+    : new THREE.MeshLambertMaterial({ color: bodyColor });
+  const accentMat = isGolden
+    ? new THREE.MeshPhongMaterial({ color: accentColor, specular: 0xffe58a, shininess: 95 })
+    : new THREE.MeshLambertMaterial({ color: accentColor });
   const billMat = new THREE.MeshLambertMaterial({ color: 0xff8f00 });
   const footMat = new THREE.MeshLambertMaterial({ color: 0xffa726 });
   const eyeMat = new THREE.MeshLambertMaterial({ color: 0x171717 });
@@ -801,6 +808,26 @@ function makeDuck(bodyColor: number, accentColor: number): THREE.Group {
   tail.scale.set(1.25, 0.85, 1.1);
   tail.position.set(0, 0.39, -0.30);
   g.add(tail);
+  if (isGolden) {
+    // Three bright feather tips make the silhouette and the gold finish pop
+    // in both the game camera and the shop preview.
+    [-0.11, 0, 0.11].forEach((x, index) => {
+      const feather = new THREE.Mesh(
+        new THREE.ConeGeometry(0.07, 0.24, 7),
+        new THREE.MeshPhongMaterial({ color: 0xffdf55, specular: 0xffffff, shininess: 140 })
+      );
+      feather.rotation.x = -(Math.PI / 2 + 0.35 + index * 0.08);
+      feather.position.set(x, 0.48 + Math.abs(x) * 0.25, -0.35);
+      g.add(feather);
+    });
+    const crown = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 7, 6),
+      new THREE.MeshPhongMaterial({ color: 0xffef91, specular: 0xffffff, shininess: 150 })
+    );
+    crown.scale.set(0.8, 1.45, 0.8);
+    crown.position.set(0, 0.81, 0.30);
+    g.add(crown);
+  }
 
   const legs: THREE.Group[] = [];
   [-0.13, 0.13].forEach((x) => {
