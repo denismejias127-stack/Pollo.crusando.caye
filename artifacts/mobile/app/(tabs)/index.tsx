@@ -120,6 +120,8 @@ const CHARACTERS = [
   { id: "dog_avocado",  name: "Perro Aguacatero",cost: 200, emoji: "🥑", type: "dog"     as const, bodyColor: 0x558b2f, accentColor: 0x1b5e20 },
   { id: "dog_shepherd", name: "Pastor Alemán",   cost: 300, emoji: "🐕", type: "dog"     as const, bodyColor: 0xd4a017, accentColor: 0x2e1a0e },
   { id: "pilbu",        name: "Pilbu",           cost: 500, emoji: "👾", type: "pilbu"   as const, bodyColor: 0x7c4dff, accentColor: 0xea80fc },
+  { id: "duck_muscovy", name: "Pato Moscoví",     cost: 350, emoji: "🦆", type: "duck"    as const, bodyColor: 0x30343b, accentColor: 0x8d99ae },
+  { id: "duck_golden",  name: "Pato Dorado",      cost: 450, emoji: "🦆", type: "duck"    as const, bodyColor: 0xf6bd2f, accentColor: 0xe58f0e },
 ] as const;
 type CharId = typeof CHARACTERS[number]["id"];
 
@@ -132,6 +134,8 @@ const CHAR_DESC: Record<CharId, string> = {
   dog_avocado:   "Ama la naturaleza y el guacamole. Nunca pide permiso para cruzar.",
   dog_shepherd:  "Serio, disciplinado y leal. No le teme a ningún carro ni camión.",
   pilbu:         "Nadie sabe de dónde vino ni a dónde va. Su mirada lo dice todo.",
+  duck_muscovy:  "Tranquilo y elegante, con su máscara roja y paso decidido.",
+  duck_golden:   "Brillante, simpático y veloz. Su plumaje dorado no pasa desapercibido.",
 };
 
 // ─── Daily Achievements ───────────────────────────────────────────────────────
@@ -163,6 +167,11 @@ function rowsText(value: number): string {
   if (value === 1) return "una fila";
   if (value === 2) return "dos filas";
   return `${value} filas`;
+}
+function facingRotation(dx: number, dz: number): number {
+  if (dz > 0) return Math.PI;
+  if (dz < 0) return 0;
+  return dx > 0 ? Math.PI / 2 : -Math.PI / 2;
 }
 function getDailyAchievements(): AchievementDef[] {
   const dayNum = Math.floor(Date.now() / 86_400_000);
@@ -721,6 +730,100 @@ function makeChicken(opts?: ChickenOpts): THREE.Group {
   return g;
 }
 
+/** Friendly low-poly duck: rounded body, connected neck, bill, wings and webbed feet. */
+function makeDuck(bodyColor: number, accentColor: number): THREE.Group {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const accentMat = new THREE.MeshLambertMaterial({ color: accentColor });
+  const billMat = new THREE.MeshLambertMaterial({ color: 0xff8f00 });
+  const footMat = new THREE.MeshLambertMaterial({ color: 0xffa726 });
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0x171717 });
+  const whiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const redMat = new THREE.MeshLambertMaterial({ color: 0xd64242 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), bodyMat);
+  body.scale.set(0.95, 0.9, 1.28);
+  body.position.set(0, 0.29, 0);
+  g.add(body);
+
+  const breast = new THREE.Mesh(new THREE.SphereGeometry(0.20, 9, 7), accentMat);
+  breast.scale.set(0.9, 0.95, 0.7);
+  breast.position.set(0, 0.28, 0.25);
+  g.add(breast);
+
+  // Broad neck overlaps both body and head, giving the duck a continuous silhouette.
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.17, 9, 7), bodyMat);
+  neck.scale.set(0.9, 1.15, 0.92);
+  neck.position.set(0, 0.48, 0.26);
+  g.add(neck);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bodyMat);
+  head.position.set(0, 0.62, 0.38);
+  g.add(head);
+
+  const bill = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 6), billMat);
+  bill.scale.set(1.35, 0.42, 0.85);
+  bill.position.set(0, 0.58, 0.59);
+  g.add(bill);
+  const billLine = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.012, 0.012), redMat);
+  billLine.position.set(0, 0.58, 0.642);
+  g.add(billLine);
+
+  [-0.105, 0.105].forEach((x) => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.062, 8, 7), whiteMat);
+    white.position.set(x, 0.68, 0.53);
+    g.add(white);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.035, 7, 6), eyeMat);
+    pupil.position.set(x, 0.68, 0.58);
+    g.add(pupil);
+  });
+
+  // Muscovy mask / golden cheek patch.
+  if (bodyColor === 0x30343b) {
+    [-1, 1].forEach((side) => {
+      const mask = new THREE.Mesh(new THREE.SphereGeometry(0.075, 7, 6), redMat);
+      mask.scale.set(0.7, 1.15, 0.45);
+      mask.position.set(side * 0.17, 0.57, 0.40);
+      g.add(mask);
+    });
+  }
+
+  [-1, 1].forEach((side) => {
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.20, 8, 7), accentMat);
+    wing.scale.set(0.28, 0.75, 1.05);
+    wing.rotation.z = side * 0.16;
+    wing.position.set(side * 0.27, 0.31, -0.02);
+    g.add(wing);
+  });
+
+  // Small tail feathers attached to the rump.
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), accentMat);
+  tail.scale.set(1.25, 0.85, 1.1);
+  tail.position.set(0, 0.39, -0.30);
+  g.add(tail);
+
+  const legs: THREE.Group[] = [];
+  [-0.13, 0.13].forEach((x) => {
+    const legGroup = new THREE.Group();
+    legGroup.position.set(x, 0.15, 0.10);
+    const joint = new THREE.Mesh(new THREE.SphereGeometry(0.07, 7, 6), footMat);
+    joint.position.y = -0.02;
+    legGroup.add(joint);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.030, 0.25, 6), footMat);
+    leg.position.y = -0.14;
+    legGroup.add(leg);
+    const web = new THREE.Mesh(new THREE.SphereGeometry(0.085, 7, 5), footMat);
+    web.scale.set(1.35, 0.35, 1.25);
+    web.position.set(0, -0.29, 0.06);
+    legGroup.add(web);
+    g.add(legGroup);
+    legs.push(legGroup);
+  });
+  g.userData.legs = legs;
+  setShadow(g, true, false);
+  return g;
+}
+
 /** 3D cat model — quadruped with horizontal body */
 function makeCat(bodyColor: number, accentColor: number): THREE.Group {
   const g = new THREE.Group();
@@ -1099,6 +1202,7 @@ function makePlayerMesh(charId: CharId): THREE.Group {
   if (char.type === "cat")   g = makeCat(char.bodyColor, char.accentColor);
   else if (char.type === "dog")   g = makeDog(char.bodyColor, char.accentColor);
   else if (char.type === "pilbu") g = makePilbu();
+  else if (char.type === "duck")  g = makeDuck(char.bodyColor, char.accentColor);
   else g = makeChicken({ bodyColor: char.bodyColor, wingColor: char.accentColor });
   // Scale down to proper small-animal proportions (roughly half the road-cell size)
   g.scale.setScalar(0.48);
@@ -1900,6 +2004,7 @@ export default function GameScreen() {
 
       const chicken = makePlayerMesh(selectedCharRef.current);
       chicken.position.set(0, 0, 0);
+      chicken.rotation.y = Math.PI;
       scene.add(chicken);
       s.playerMesh = chicken;
 
@@ -2032,7 +2137,6 @@ export default function GameScreen() {
             const breathing = 1 + Math.sin(idleT * 1.35) * 0.022;
             s.playerMesh.scale.set(0.48 * breathing, 0.48 / breathing, 0.48 * breathing);
             s.playerMesh.rotation.z = Math.sin(idleT) * 0.045;
-            s.playerMesh.rotation.y = Math.sin(idleT * 0.72) * 0.035;
             s.playerMesh.position.y = Math.sin(idleT * 1.3) * 0.018;
         }
 
@@ -2092,6 +2196,9 @@ export default function GameScreen() {
       if (s.dead || s.hop.active || !s.scene) return;
       const newX = Math.max(-BOARD_HALF, Math.min(BOARD_HALF, s.playerX + dx));
       const newZ = Math.max(0, s.playerZ + dz);
+      if (s.playerMesh && (dx !== 0 || dz !== 0)) {
+        s.playerMesh.rotation.y = facingRotation(dx, dz);
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       playHopSoundRef.current();
       // Character "voice" chirps occasionally so it's not overbearing
