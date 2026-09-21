@@ -75,6 +75,49 @@ interface CoinObj {
 }
 
 type CameraMode = "exterior" | "interior";
+type TimeMode = "day" | "evening" | "night";
+type WeatherMode = "sunny" | "breeze" | "rain" | "storm";
+
+const ADMOB_WEB_CLIENT_ID = "ca-pub-TU_CLIENT_ID";
+
+declare global {
+  interface Window {
+    adsbygoogle?: unknown[];
+    __POLLO_REWARDED_AD__?: () => Promise<boolean> | boolean;
+  }
+}
+
+/**
+ * Loads the web AdMob/AdSense script when the game is hosted inside a web
+ * surface. A native APK must expose __POLLO_REWARDED_AD__ from its WebView
+ * bridge; the game grants the reward only when that function resolves true.
+ */
+function useRewardedAdScript() {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (document.querySelector("script[data-pollo-admob]")) return;
+    const script = document.createElement("script");
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.dataset.polloAdmob = "true";
+    script.src =
+      `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADMOB_WEB_CLIENT_ID}`;
+    document.head.appendChild(script);
+  }, []);
+}
+
+async function showRewardedAd(): Promise<boolean> {
+  if (Platform.OS === "web") {
+    const bridge = typeof window !== "undefined" ? window.__POLLO_REWARDED_AD__ : undefined;
+    if (!bridge) return false;
+    return Boolean(await bridge());
+  }
+  const nativeBridge = (globalThis as {
+    __POLLO_REWARDED_AD__?: () => Promise<boolean> | boolean;
+  }).__POLLO_REWARDED_AD__;
+  if (!nativeBridge) return false;
+  return Boolean(await nativeBridge());
+}
 
 interface RowData {
   rowIdx: number;
@@ -1568,6 +1611,7 @@ function ThumbnailMinter({
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GameScreen() {
   const webGLAvailable = useWebGLAvailable();
+  useRewardedAdScript();
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
@@ -1580,6 +1624,8 @@ export default function GameScreen() {
   const [muted, setMuted] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [recordMessage, setRecordMessage] = useState("");
+  const [adLoading, setAdLoading] = useState(false);
+  const [adMessage, setAdMessage] = useState("");
   const [dailyRewardClaimed, setDailyRewardClaimed] = useState(false);
   const [dailyAchProgress, setDailyAchProgress] = useState<Record<string, number>>({});
   const [dailyAchClaimed, setDailyAchClaimed] = useState<Set<string>>(new Set());
@@ -1829,9 +1875,27 @@ export default function GameScreen() {
 
   const [coins, setCoins] = useState(0);
   const [cameraMode, setCameraMode] = useState<CameraMode>("exterior");
-  const [nightMode, setNightMode] = useState(false);
   const nightModeRef = useRef(false);
-  nightModeRef.current = nightMode;
+  const [timeMode, setTimeMode] = useState<TimeMode>("day");
+  const [weatherMode, setWeatherMode] = useState<WeatherMode>("sunny");
+  const timeModeRef = useRef<TimeMode>("day");
+  const weatherModeRef = useRef<WeatherMode>("sunny");
+  nightModeRef.current = timeMode === "night";
+  timeModeRef.current = timeMode;
+  weatherModeRef.current = weatherMode;
+
+  // The shop can remain mounted over the game renderer. Keep the live mesh in
+  // sync immediately when a player selects a character before pressing JUGAR.
+  useEffect(() => {
+    const s = stateRef.current;
+    if (started || !s.scene || !s.playerMesh || s.dead) return;
+    s.scene.remove(s.playerMesh);
+    const mesh = makePlayerMesh(selectedChar);
+    mesh.position.set(s.playerX, 0, -s.playerZ);
+    mesh.rotation.y = Math.PI;
+    s.scene.add(mesh);
+    s.playerMesh = mesh;
+  }, [selectedChar, started]);
 
   // ── Free-look refs for interior first-person mode ──
   const camYawRef   = useRef(0);   // horizontal rotation (radians)
@@ -2349,6 +2413,38 @@ export default function GameScreen() {
     setGameOver(false);
   }, [generateRows]);
 
+  const revivirJugador = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.scene || !s.playerMesh) return;
+    s.dead = false;
+    s.deadMs = 0;
+    s.hop = { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 };
+    s.playerMesh.visible = true;
+    s.playerMesh.position.set(s.playerX, 0, -s.playerZ);
+    s.playerMesh.scale.setScalar(0.48);
+    s.playerMesh.rotation.z = 0;
+    setGameOver(false);
+    setAdMessage("");
+  }, []);
+
+  const handleReviveAd = useCallback(async () => {
+    if (adLoading) return;
+    setAdLoading(true);
+    setAdMessage("");
+    try {
+      const rewarded = await showRewardedAd();
+      if (rewarded) {
+        revivirJugador();
+      } else {
+        setAdMessage("El anuncio recompensado no está disponible todavía.");
+      }
+    } catch {
+      setAdMessage("No se pudo cargar el anuncio. Intenta de nuevo.");
+    } finally {
+      setAdLoading(false);
+    }
+  }, [adLoading, revivirJugador]);
+
   // ── No WebGL fallback ─────────────────────────────────────────────────────
   if (webGLAvailable === false) {
     return (
@@ -2452,15 +2548,19 @@ export default function GameScreen() {
             <Text style={styles.startBtnText}>JUGAR</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.nightBtn, nightMode && styles.nightBtnActive]}
-            onPress={() => setNightMode((n) => !n)}
+            style={[styles.nightBtn, timeMode !== "day" && styles.nightBtnActive]}
+            onPress={() =>
+              setTimeMode((current) =>
+                current === "day" ? "evening" : current === "evening" ? "night" : "day"
+              )
+            }
             activeOpacity={0.8}
           >
             <Text style={styles.nightBtnText}>
-              {nightMode ? "☀️  MODO DÍA" : "🌙  MODO NOCHE"}
+              {timeMode === "day" ? "☀️  DÍA" : timeMode === "evening" ? "🌇  TARDE" : "🌙  NOCHE"}
             </Text>
             <Text style={styles.nightBtnHint}>
-              {nightMode ? "Luz del día y tráfico visible" : "Faros y casas encendidas"}
+              {timeMode === "night" ? "Faros y casas encendidas" : "Toca para cambiar la hora"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -2506,6 +2606,17 @@ export default function GameScreen() {
           <View style={styles.gameOverCoins}>
             <Text style={styles.gameOverCoinText}>💰 {totalCoins} total</Text>
           </View>
+          <TouchableOpacity
+            style={[styles.reviveBtn, adLoading && styles.reviveBtnDisabled]}
+            onPress={handleReviveAd}
+            disabled={adLoading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.reviveBtnText}>
+              {adLoading ? "CARGANDO ANUNCIO..." : "▶️ VER ANUNCIO PARA REVIVIR"}
+            </Text>
+          </TouchableOpacity>
+          {!!adMessage && <Text style={styles.adMessage}>{adMessage}</Text>}
           <TouchableOpacity style={styles.startBtn} onPress={restart}>
             <Text style={styles.startBtnText}>JUGAR DE NUEVO</Text>
           </TouchableOpacity>
@@ -2842,6 +2953,30 @@ const styles = StyleSheet.create({
     color: "#FFD700",
     fontSize: 20,
     fontWeight: "700",
+  },
+  reviveBtn: {
+    marginTop: 8,
+    backgroundColor: "#69f0ae",
+    borderRadius: 28,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: "#b9ffdc",
+  },
+  reviveBtnDisabled: {
+    opacity: 0.55,
+  },
+  reviveBtnText: {
+    color: "#10251d",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+  },
+  adMessage: {
+    color: "#ffd6d6",
+    fontSize: 12,
+    textAlign: "center",
+    maxWidth: 260,
   },
   newRecordText: {
     color: "#FFD700",
