@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import * as THREE from "three";
+import { showRewardedAd } from "../../lib/AdMobRewarded";
 
 // ─── WebGL availability check (web preview may lack WebGL) ───────────────────
 function useWebGLAvailable() {
@@ -79,8 +80,6 @@ type TimeMode = "day" | "evening" | "night";
 type WeatherMode = "sunny" | "breeze" | "rain" | "storm";
 
 const ADMOB_WEB_CLIENT_ID = "ca-pub-TU_CLIENT_ID";
-const ADMOB_ANDROID_APP_ID = "ca-app-pub-8438801760716180~2977006294";
-const ADMOB_ANDROID_REWARDED_UNIT_ID = "ca-app-pub-8438801760716180/1098974535";
 
 declare global {
   interface Window {
@@ -106,59 +105,6 @@ function useRewardedAdScript() {
       `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADMOB_WEB_CLIENT_ID}`;
     document.head.appendChild(script);
   }, []);
-}
-
-async function showRewardedAd(): Promise<boolean> {
-  if (Platform.OS === "web") {
-    const bridge = typeof window !== "undefined" ? window.__POLLO_REWARDED_AD__ : undefined;
-    if (!bridge) return false;
-    return Boolean(await bridge());
-  }
-  try {
-    // This is required lazily so the browser preview and Expo Go can still
-    // bundle the game. The native APK receives the module through the config
-    // plugin declared in app.json.
-    const {
-      default: mobileAds,
-      RewardedAd,
-      RewardedAdEventType,
-    } = require("react-native-google-mobile-ads");
-    await mobileAds().initialize();
-    const rewarded = RewardedAd.createForAdRequest(ADMOB_ANDROID_REWARDED_UNIT_ID);
-
-    return await new Promise<boolean>((resolve) => {
-      let earned = false;
-      let settled = false;
-      const finish = (value: boolean) => {
-        if (settled) return;
-        settled = true;
-        loadedSubscription.remove();
-        earnedSubscription.remove();
-        closedSubscription.remove();
-        errorSubscription.remove();
-        resolve(value);
-      };
-      const loadedSubscription = rewarded.addAdEventListener(
-        RewardedAdEventType.LOADED,
-        () => { rewarded.show().catch(() => finish(false)); }
-      );
-      const earnedSubscription = rewarded.addAdEventListener(
-        RewardedAdEventType.EARNED_REWARD,
-        () => { earned = true; }
-      );
-      const closedSubscription = rewarded.addAdEventListener(
-        RewardedAdEventType.CLOSED,
-        () => finish(earned)
-      );
-      const errorSubscription = rewarded.addAdEventListener(
-        RewardedAdEventType.ERROR,
-        () => finish(false)
-      );
-      rewarded.load();
-    });
-  } catch {
-    return false;
-  }
 }
 
 interface RowData {
