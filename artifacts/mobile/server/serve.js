@@ -104,8 +104,17 @@ function serveStaticFile(urlPath, res) {
   res.end(content);
 }
 
-const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
-const appName = getAppName();
+function serveWebIndex(res) {
+  const indexPath = path.join(STATIC_ROOT, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    res.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Web build is not available yet.");
+    return;
+  }
+
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  res.end(fs.readFileSync(indexPath));
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -116,14 +125,13 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === "/" || pathname === "/manifest") {
-    const platform = req.headers["expo-platform"];
-    if (platform === "ios" || platform === "android") {
-      return serveManifest(platform, res);
-    }
+    return serveWebIndex(res);
+  }
 
-    if (pathname === "/") {
-      return serveLandingPage(req, res, landingPageTemplate, appName);
-    }
+  // Expo Router uses client-side routes. Return index.html for route paths
+  // while still serving JS, CSS, fonts, and images as static files.
+  if (!path.extname(pathname)) {
+    return serveWebIndex(res);
   }
 
   serveStaticFile(pathname, res);
