@@ -59,6 +59,7 @@
   "dependencies": {
     "expo-audio": "^1.1.1",
     "expo-gl": "^56.0.5",
+    "react-native-google-mobile-ads": "^17.0.0",
     "three": "^0.184.0"
   }
 }
