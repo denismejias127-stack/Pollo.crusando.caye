@@ -1,0 +1,1 @@
+- [Expo web publishing](expo-web-publishing.md) — browser URLs need a real Expo web export and SPA server, not only an Expo Go landing page.
