@@ -1,1 +1,2 @@
 - [Expo web publishing](expo-web-publishing.md) — browser URLs need a real Expo web export and SPA server, not only an Expo Go landing page.
+- [Expo GL lifecycle](expo-gl-lifecycle.md) — release renderers and animation loops before switching between game and overlay GL views.
