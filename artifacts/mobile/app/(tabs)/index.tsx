@@ -1622,6 +1622,8 @@ export default function GameScreen() {
   );
   const [selectedChar, setSelectedChar] = useState<CharId>("chicken_gold");
   const [showShop, setShowShop] = useState(false);
+  const [gameGLReady, setGameGLReady] = useState(false);
+  const [gameGLKey, setGameGLKey] = useState(0);
   const [muted, setMuted] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [recordMessage, setRecordMessage] = useState("");
@@ -1639,6 +1641,21 @@ export default function GameScreen() {
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
+
+  // Native Expo GL can fail when one GLView is replaced by another in the
+  // same render pass. Leave the surface absent briefly, then mount a fresh
+  // instance after the shop/preview GLView has been fully removed.
+  useEffect(() => {
+    if (showShop || showAchievements || previewChar || mintingChar) {
+      setGameGLReady(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setGameGLKey((previous) => previous + 1);
+      setGameGLReady(true);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [showShop, showAchievements, previewChar, mintingChar]);
 
   // ── Audio: coin SFX + looping background music ────────────────────────────
   const coinPlayer = useAudioPlayer(require("../../assets/sounds/coin.mp3"));
@@ -2534,8 +2551,9 @@ export default function GameScreen() {
     <View style={styles.root} {...panResponder.panHandlers}>
       {/* Main game renderer — keep only one WebGL context mounted at a time.
           Shop and achievements screens explicitly release the game renderer. */}
-      {webGLAvailable && !showShop && !showAchievements && !previewChar && !mintingChar && (
+      {webGLAvailable && gameGLReady && !showShop && !showAchievements && !previewChar && !mintingChar && (
         <GLView
+          key={gameGLKey}
           style={StyleSheet.absoluteFill}
           onContextCreate={onContextCreate}
         />
