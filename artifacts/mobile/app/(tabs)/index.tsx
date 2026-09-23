@@ -1442,6 +1442,7 @@ function makeRoadRow(rowIdx: number, night = false): THREE.Group {
 // (only one WebGL context can be active at a time on Expo GL).
 function CharacterPreviewGL({ charId }: { charId: CharId }) {
   const animRef = useRef<number | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   const onContextCreate = useCallback(
     (gl: any) => {
@@ -1457,6 +1458,7 @@ function CharacterPreviewGL({ charId }: { charId: CharId }) {
         context: gl,
         antialias: true,
       });
+      rendererRef.current = renderer;
       renderer.setSize(w, h);
       renderer.setClearColor(0x141428);
       renderer.shadowMap.enabled = false;
@@ -1516,7 +1518,11 @@ function CharacterPreviewGL({ charId }: { charId: CharId }) {
     [charId]
   );
 
-  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+  useEffect(() => () => {
+    if (animRef.current !== null) cancelAnimationFrame(animRef.current);
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+  }, []);
 
   return (
     <GLView key={charId} style={styles.previewGLView} onContextCreate={onContextCreate} />
@@ -1533,6 +1539,7 @@ function ThumbnailMinter({
   onDone: (id: CharId, uri: string) => void;
 }) {
   const doneRef = useRef(false);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   const onContextCreate = useCallback(
     async (gl: any) => {
@@ -1548,6 +1555,7 @@ function ThumbnailMinter({
         context: gl,
         antialias: false,
       });
+      rendererRef.current = renderer;
       renderer.setSize(w, h);
       renderer.setClearColor(0x1a1a2e);
 
@@ -1585,6 +1593,11 @@ function ThumbnailMinter({
     },
     [charId, onDone]
   );
+
+  useEffect(() => () => {
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+  }, []);
 
   // Tiny but real dimensions so drawingBufferWidth/Height are non-zero
   return (
@@ -1903,6 +1916,65 @@ export default function GameScreen() {
   // keep ref in sync with state so the game loop can read it without re-binding
   cameraModeRef.current = cameraMode;
 
+  const cleanupGameRenderer = useCallback(() => {
+    const s = stateRef.current;
+    if (s.animId !== null) {
+      cancelAnimationFrame(s.animId);
+      s.animId = null;
+    }
+    s.renderer?.dispose();
+    s.renderer = null;
+    s.scene = null;
+    s.camera = null;
+    s.playerMesh = null;
+    s.gl = null;
+    s.rows = [];
+    s.coins = [];
+    s.maxRowIdx = 0;
+  }, []);
+
+  const resetRoundState = useCallback(() => {
+    const s = stateRef.current;
+    s.playerX = 0;
+    s.playerZ = 0;
+    s.dead = false;
+    s.deadMs = 0;
+    s.score = 0;
+    s.maxScore = 0;
+    s.coinScore = 0;
+    s.hop = { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 };
+  }, []);
+
+  const openShop = useCallback(() => {
+    cleanupGameRenderer();
+    setPreviewChar(null);
+    setShowAchievements(false);
+    setShowShop(true);
+  }, [cleanupGameRenderer]);
+
+  const openAchievements = useCallback(() => {
+    cleanupGameRenderer();
+    setPreviewChar(null);
+    setShowShop(false);
+    setShowAchievements(true);
+  }, [cleanupGameRenderer]);
+
+  const returnToMenu = useCallback(() => {
+    cleanupGameRenderer();
+    resetRoundState();
+    mintQueueRef.current = [];
+    setMintingChar(null);
+    setPreviewChar(null);
+    setShowShop(false);
+    setShowAchievements(false);
+    setStarted(false);
+    setGameOver(false);
+    setScore(0);
+    setCoins(0);
+    setRecordMessage("");
+    setAdMessage("");
+  }, [cleanupGameRenderer, resetRoundState]);
+
   // ── PanResponder — only hijacks drag in interior mode ──────────────────
   const panResponder = useRef(
     PanResponder.create({
@@ -2033,6 +2105,16 @@ export default function GameScreen() {
   const onContextCreate = useCallback(
     (gl: any) => {
       const s = stateRef.current;
+      if (s.animId !== null) cancelAnimationFrame(s.animId);
+      s.animId = null;
+      s.renderer?.dispose();
+      s.renderer = null;
+      s.scene = null;
+      s.camera = null;
+      s.playerMesh = null;
+      s.rows = [];
+      s.coins = [];
+      s.maxRowIdx = 0;
       s.gl = gl;
       const w = gl.drawingBufferWidth;
       const h = gl.drawingBufferHeight;
@@ -2108,12 +2190,12 @@ export default function GameScreen() {
       scene.add(groundPlane);
 
       const chicken = makePlayerMesh(selectedCharRef.current);
-      chicken.position.set(0, 0, 0);
+      chicken.position.set(s.playerX, 0, -s.playerZ);
       chicken.rotation.y = Math.PI;
       scene.add(chicken);
       s.playerMesh = chicken;
 
-      generateRows(VISIBLE_ROWS);
+      generateRows(Math.max(VISIBLE_ROWS, s.playerZ + SAFE_AHEAD));
 
       let lastMs = Date.now();
       const loop = () => {
@@ -2450,9 +2532,9 @@ export default function GameScreen() {
 
   return (
     <View style={styles.root} {...panResponder.panHandlers}>
-      {/* Main game renderer — hidden while a character preview or thumbnail
-          minting is active so only one WebGL context runs at a time. */}
-      {webGLAvailable && !previewChar && !mintingChar && (
+      {/* Main game renderer — keep only one WebGL context mounted at a time.
+          Shop and achievements screens explicitly release the game renderer. */}
+      {webGLAvailable && !showShop && !showAchievements && !previewChar && !mintingChar && (
         <GLView
           style={StyleSheet.absoluteFill}
           onContextCreate={onContextCreate}
@@ -2531,7 +2613,10 @@ export default function GameScreen() {
           )}
           <TouchableOpacity
             style={styles.startBtn}
-            onPress={() => setStarted(true)}
+            onPress={() => {
+              resetRoundState();
+              setStarted(true);
+            }}
           >
             <Text style={styles.startBtnText}>JUGAR</Text>
           </TouchableOpacity>
@@ -2553,7 +2638,7 @@ export default function GameScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowShop(true)}
+            onPress={openShop}
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
           </TouchableOpacity>
@@ -2568,7 +2653,7 @@ export default function GameScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowAchievements(true)}
+            onPress={openAchievements}
           >
             <Text style={styles.shopBtnText}>🏅 LOGROS DEL DÍA</Text>
           </TouchableOpacity>
@@ -2610,15 +2695,21 @@ export default function GameScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowShop(true)}
+            onPress={openShop}
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowAchievements(true)}
+            onPress={openAchievements}
           >
             <Text style={styles.shopBtnText}>🏅 LOGROS DEL DÍA</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shopBtn}
+            onPress={returnToMenu}
+          >
+            <Text style={styles.shopBtnText}>← VOLVER AL MENÚ</Text>
           </TouchableOpacity>
         </View>
       )}
