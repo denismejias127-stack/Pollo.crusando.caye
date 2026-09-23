@@ -1641,6 +1641,8 @@ export default function GameScreen() {
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
+  const previewCharRef = useRef<CharId | null>(null);
+  previewCharRef.current = previewChar;
 
   // Native Expo GL can fail when one GLView is replaced by another in the
   // same render pass. Leave the surface absent briefly, then mount a fresh
@@ -2177,6 +2179,57 @@ export default function GameScreen() {
       camera.lookAt(0, 0, 0);
       s.camera = camera;
 
+      let previewScene: THREE.Scene | null = null;
+      let previewCamera: THREE.PerspectiveCamera | null = null;
+      let previewMesh: THREE.Group | null = null;
+      let activePreviewChar: CharId | null = null;
+      let previewStartedMs = 0;
+
+      const disposeWebPreview = () => {
+        if (previewMesh && previewScene) {
+          previewScene.remove(previewMesh);
+          previewMesh.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            mesh.geometry.dispose();
+            const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            materials.forEach((material) => material.dispose());
+          });
+        }
+        previewScene = null;
+        previewCamera = null;
+        previewMesh = null;
+        activePreviewChar = null;
+      };
+
+      const createWebPreview = (charId: CharId) => {
+        disposeWebPreview();
+        previewScene = new THREE.Scene();
+        previewScene.background = new THREE.Color(0x141428);
+        previewCamera = new THREE.PerspectiveCamera(40, w / h, 0.1, 50);
+        previewCamera.position.set(0, 0.65, 2.4);
+        previewCamera.lookAt(0, 0.15, 0);
+        previewScene.add(new THREE.AmbientLight(0xffffff, 0.75));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+        sun.position.set(2, 4, 2);
+        previewScene.add(sun);
+        const fill = new THREE.DirectionalLight(0x8080ff, 0.3);
+        fill.position.set(-2, 1, -1);
+        previewScene.add(fill);
+        const ground = new THREE.Mesh(
+          new THREE.CircleGeometry(0.9, 40),
+          new THREE.MeshLambertMaterial({ color: 0x1e1e3a })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.25;
+        previewScene.add(ground);
+        previewMesh = makePlayerMesh(charId);
+        previewMesh.scale.setScalar(1.05);
+        previewScene.add(previewMesh);
+        activePreviewChar = charId;
+        previewStartedMs = Date.now();
+      };
+
       // Soft ambient fill
        scene.add(new THREE.AmbientLight(night ? 0x536b9b : 0xd0e8ff, night ? 0.28 : 0.65));
       // Hemisphere sky/ground light for realistic outdoor feel
@@ -2225,6 +2278,33 @@ export default function GameScreen() {
         const now = Date.now();
         const dt = Math.min((now - lastMs) / 1000, 0.05);
         lastMs = now;
+
+        const webPreviewId = Platform.OS === "web" ? previewCharRef.current : null;
+        if (webPreviewId) {
+          if (activePreviewChar !== webPreviewId || !previewScene || !previewCamera || !previewMesh) {
+            createWebPreview(webPreviewId);
+          }
+          const previewTime = (now - previewStartedMs) / 1000;
+          const breath = 1 + Math.sin(previewTime * Math.PI * 2) * 0.025;
+          previewMesh!.rotation.y = previewTime * 0.65;
+          previewMesh!.rotation.z = Math.sin(previewTime * Math.PI * 2) * 0.025;
+          previewMesh!.scale.set(1.05 * breath, 1.05 / breath, 1.05 * breath);
+          previewMesh!.position.y = Math.abs(Math.sin(previewTime * Math.PI * 2)) * 0.035;
+          const swing = Math.sin(previewTime * Math.PI * 2) * 0.32;
+          const previewLegs = previewMesh!.userData.legs as THREE.Group[] | undefined;
+          if (previewLegs) {
+            if (previewLegs.length >= 4) {
+              previewLegs[0].rotation.x = swing; previewLegs[1].rotation.x = -swing;
+              previewLegs[2].rotation.x = -swing; previewLegs[3].rotation.x = swing;
+            } else if (previewLegs.length === 2) {
+              previewLegs[0].rotation.x = swing; previewLegs[1].rotation.x = -swing;
+            }
+          }
+          renderer.render(previewScene!, previewCamera!);
+          gl.endFrameEXP();
+          return;
+        }
+        if (activePreviewChar) disposeWebPreview();
 
         if (!s.dead) {
           // Move cars
@@ -2856,7 +2936,12 @@ export default function GameScreen() {
         const active = selectedChar === char.id;
         const canBuy = !owned && totalCoins >= char.cost;
         return (
-          <View style={styles.shopOverlay}>
+          <View
+            style={[
+              styles.shopOverlay,
+              Platform.OS === "web" && styles.previewOverlayWeb,
+            ]}
+          >
             <TouchableOpacity
               style={styles.previewBack}
               onPress={() => setPreviewChar(null)}
@@ -2867,9 +2952,7 @@ export default function GameScreen() {
             {/* WebView wrappers use the single persistent game canvas. Native
                 Expo can still use the separate animated character preview. */}
             {Platform.OS === "web" ? (
-              <View style={styles.previewWebCard}>
-                <Text style={styles.previewWebEmoji}>{char.emoji}</Text>
-              </View>
+              <View style={styles.previewWebCard} />
             ) : (
               <CharacterPreviewGL charId={previewChar} />
             )}
@@ -3294,12 +3377,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
     marginBottom: 6,
-    backgroundColor: "#141428",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
-  previewWebEmoji: {
-    fontSize: 112,
+  previewOverlayWeb: {
+    backgroundColor: "rgba(10,10,30,0.68)",
   },
   thumbMinter: {
     // Offscreen but real size so drawingBuffer is non-zero
