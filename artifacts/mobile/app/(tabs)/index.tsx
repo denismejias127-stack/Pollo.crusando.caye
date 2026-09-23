@@ -1646,6 +1646,10 @@ export default function GameScreen() {
   // same render pass. Leave the surface absent briefly, then mount a fresh
   // instance after the shop/preview GLView has been fully removed.
   useEffect(() => {
+    if (Platform.OS === "web") {
+      setGameGLReady(true);
+      return;
+    }
     if (showShop || showAchievements || previewChar || mintingChar) {
       setGameGLReady(false);
       return;
@@ -1690,6 +1694,7 @@ export default function GameScreen() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === "web") return;
     if (showShop && Object.keys(charThumbnails).length === 0 && mintingChar === null) {
       mintQueueRef.current = CHARACTERS.map((c) => c.id).slice(1); // head pops below
       setMintingChar(CHARACTERS[0].id);
@@ -1963,21 +1968,21 @@ export default function GameScreen() {
   }, []);
 
   const openShop = useCallback(() => {
-    cleanupGameRenderer();
+    if (Platform.OS !== "web") cleanupGameRenderer();
     setPreviewChar(null);
     setShowAchievements(false);
     setShowShop(true);
   }, [cleanupGameRenderer]);
 
   const openAchievements = useCallback(() => {
-    cleanupGameRenderer();
+    if (Platform.OS !== "web") cleanupGameRenderer();
     setPreviewChar(null);
     setShowShop(false);
     setShowAchievements(true);
   }, [cleanupGameRenderer]);
 
   const returnToMenu = useCallback(() => {
-    cleanupGameRenderer();
+    if (Platform.OS !== "web") cleanupGameRenderer();
     resetRoundState();
     mintQueueRef.current = [];
     setMintingChar(null);
@@ -2551,7 +2556,9 @@ export default function GameScreen() {
     <View style={styles.root} {...panResponder.panHandlers}>
       {/* Main game renderer — keep only one WebGL context mounted at a time.
           Shop and achievements screens explicitly release the game renderer. */}
-      {webGLAvailable && gameGLReady && !showShop && !showAchievements && !previewChar && !mintingChar && (
+      {webGLAvailable &&
+        (Platform.OS === "web" ||
+          (gameGLReady && !showShop && !showAchievements && !previewChar && !mintingChar)) && (
         <GLView
           key={gameGLKey}
           style={StyleSheet.absoluteFill}
@@ -2560,7 +2567,7 @@ export default function GameScreen() {
       )}
 
       {/* Thumbnail minter — offscreen, replaces main GLView during minting */}
-      {mintingChar && (
+      {Platform.OS !== "web" && mintingChar && (
         <ThumbnailMinter charId={mintingChar} onDone={handleMintDone} />
       )}
 
@@ -2632,7 +2639,11 @@ export default function GameScreen() {
           <TouchableOpacity
             style={styles.startBtn}
             onPress={() => {
-              resetRoundState();
+              if (stateRef.current.scene && stateRef.current.playerMesh) {
+                restart();
+              } else {
+                resetRoundState();
+              }
               setStarted(true);
             }}
           >
@@ -2853,8 +2864,15 @@ export default function GameScreen() {
               <Text style={styles.shopBackText}>← PERSONAJES</Text>
             </TouchableOpacity>
 
-            {/* 3-D animated preview */}
-            <CharacterPreviewGL charId={previewChar} />
+            {/* WebView wrappers use the single persistent game canvas. Native
+                Expo can still use the separate animated character preview. */}
+            {Platform.OS === "web" ? (
+              <View style={styles.previewWebCard}>
+                <Text style={styles.previewWebEmoji}>{char.emoji}</Text>
+              </View>
+            ) : (
+              <CharacterPreviewGL charId={previewChar} />
+            )}
 
             <Text style={styles.previewName}>{char.emoji}  {char.name}</Text>
             <Text style={styles.previewDesc}>{CHAR_DESC[char.id]}</Text>
@@ -3269,6 +3287,19 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 6,
     backgroundColor: "#141428",
+  },
+  previewWebCard: {
+    width: "100%",
+    height: 220,
+    borderRadius: 20,
+    overflow: "hidden",
+    marginBottom: 6,
+    backgroundColor: "#141428",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewWebEmoji: {
+    fontSize: 112,
   },
   thumbMinter: {
     // Offscreen but real size so drawingBuffer is non-zero
