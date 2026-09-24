@@ -4,6 +4,7 @@ import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Dimensions,
   Image,
   PanResponder,
@@ -12,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import * as THREE from "three";
@@ -244,6 +246,62 @@ const C = {
   hedge: 0x33691e,
   chimney: 0x8d6e63,
 };
+
+interface TimeVisual {
+  sky: number;
+  fog: number;
+  grass: number;
+  ambient: number;
+  ambientColor: number;
+  hemiSky: number;
+  hemiGround: number;
+  hemiIntensity: number;
+  sun: number;
+  sunIntensity: number;
+}
+
+function getTimeVisual(mode: TimeMode): TimeVisual {
+  if (mode === "evening") {
+    return {
+      sky: 0xd98768,
+      fog: 0xd98768,
+      grass: 0x3d7f46,
+      ambient: 0x8a5c53,
+      ambientColor: 0xffc09a,
+      hemiSky: 0xe58b72,
+      hemiGround: 0x314d32,
+      hemiIntensity: 0.42,
+      sun: 0xffa45e,
+      sunIntensity: 0.8,
+    };
+  }
+  if (mode === "night") {
+    return {
+      sky: 0x071329,
+      fog: 0x071329,
+      grass: 0x173d2b,
+      ambient: 0x536b9b,
+      ambientColor: 0x8aa9e8,
+      hemiSky: 0x263b70,
+      hemiGround: 0x10251d,
+      hemiIntensity: 0.28,
+      sun: 0x8faeff,
+      sunIntensity: 0.42,
+    };
+  }
+  return {
+    sky: C.sky,
+    fog: C.sky,
+    grass: C.grass,
+    ambient: 0xd0e8ff,
+    ambientColor: 0xd0e8ff,
+    hemiSky: 0x87ceeb,
+    hemiGround: 0x4caf50,
+    hemiIntensity: 0.45,
+    sun: 0xfff5e0,
+    sunIntensity: 1.1,
+  };
+}
 
 // ─── Shared materials (reused across rows for performance) ───────────────────
 const MAT = {
@@ -1613,6 +1671,8 @@ function ThumbnailMinter({
 export default function GameScreen() {
   const webGLAvailable = useWebGLAvailable();
   useRewardedAdScript();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const compactLayout = viewportWidth < 360 || viewportHeight < 650;
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
@@ -1670,6 +1730,15 @@ export default function GameScreen() {
   const crashPlayer = useAudioPlayer(require("../../assets/sounds/crash.mp3"));
   const hopPlayer = useAudioPlayer(require("../../assets/sounds/hop.mp3"));
   const characterPlayer = useAudioPlayer(require("../../assets/sounds/character.mp3"));
+  const audioSuspendedRef = useRef(false);
+  const mutedRef = useRef(muted);
+  const startedRef = useRef(started);
+  const gameOverRef = useRef(gameOver);
+  const showShopRef = useRef(showShop);
+  mutedRef.current = muted;
+  startedRef.current = started;
+  gameOverRef.current = gameOver;
+  showShopRef.current = showShop;
   const coinPlayerRef = useRef(coinPlayer);
   coinPlayerRef.current = coinPlayer;
   const crashPlayerRef = useRef(crashPlayer);
@@ -1716,9 +1785,66 @@ export default function GameScreen() {
     characterPlayer.volume = 0.8;
   }, [musicPlayer, trafficPlayer, characterPlayer]);
 
+  // Stop looping audio whenever the app, tab, browser window, or WebView
+  // loses focus. The suspended ref prevents the "loaded and not playing"
+  // effect below from immediately starting the song again in the background.
+  useEffect(() => {
+    const pauseBackgroundAudio = () => {
+      audioSuspendedRef.current = true;
+      musicPlayer.pause();
+      trafficPlayer.pause();
+    };
+    const resumeForegroundAudio = () => {
+      audioSuspendedRef.current = false;
+      if (!mutedRef.current) {
+        musicPlayer.play();
+      }
+      if (startedRef.current && !gameOverRef.current && !showShopRef.current) {
+        trafficPlayer.play();
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") resumeForegroundAudio();
+      else pauseBackgroundAudio();
+    });
+
+    let removeWebListeners: (() => void) | undefined;
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const handleVisibility = () => {
+        if (document.visibilityState === "visible") resumeForegroundAudio();
+        else pauseBackgroundAudio();
+      };
+      const handleBlur = () => pauseBackgroundAudio();
+      const handleFocus = () => {
+        if (document.visibilityState === "visible") resumeForegroundAudio();
+      };
+      document.addEventListener("visibilitychange", handleVisibility);
+      window.addEventListener("blur", handleBlur);
+      window.addEventListener("focus", handleFocus);
+      window.addEventListener("pagehide", handleBlur);
+      removeWebListeners = () => {
+        document.removeEventListener("visibilitychange", handleVisibility);
+        window.removeEventListener("blur", handleBlur);
+        window.removeEventListener("focus", handleFocus);
+        window.removeEventListener("pagehide", handleBlur);
+      };
+    }
+
+    return () => {
+      appStateSubscription.remove();
+      removeWebListeners?.();
+    };
+  }, [musicPlayer, trafficPlayer]);
+
   // Start music only once the track is loaded and ready
   useEffect(() => {
-    if (musicStatus.isLoaded && !musicStatus.playing) {
+    if (
+      musicStatus.isLoaded &&
+      !musicStatus.playing &&
+      !audioSuspendedRef.current &&
+      !mutedRef.current
+    ) {
       musicPlayer.play();
     }
   }, [musicStatus.isLoaded, musicStatus.playing, musicPlayer]);
@@ -1727,7 +1853,10 @@ export default function GameScreen() {
   useEffect(() => {
     musicPlayer.volume = muted ? 0 : 0.45;
     trafficPlayer.volume = muted ? 0 : 0.25;
-  }, [muted, musicPlayer, trafficPlayer]);
+    if (!muted && musicStatus.isLoaded && !musicStatus.playing && !audioSuspendedRef.current) {
+      musicPlayer.play();
+    }
+  }, [muted, musicPlayer, trafficPlayer, musicStatus.isLoaded, musicStatus.playing]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
@@ -2166,12 +2295,12 @@ export default function GameScreen() {
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       s.renderer = renderer;
 
-      const scene = new THREE.Scene();
-       const night = nightModeRef.current;
-       const skyColor = night ? 0x071329 : C.sky;
-       scene.background = new THREE.Color(skyColor);
-      // fog starts close so the tile edges are never visible
-       scene.fog = new THREE.Fog(skyColor, 14, 28);
+       const scene = new THREE.Scene();
+       const initialTime = timeModeRef.current;
+       const initialVisual = getTimeVisual(initialTime);
+       scene.background = new THREE.Color(initialVisual.sky);
+       // Fog starts close so the tile edges are never visible.
+       scene.fog = new THREE.Fog(initialVisual.fog, 14, 28);
       s.scene = scene;
 
       const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 80);
@@ -2230,17 +2359,25 @@ export default function GameScreen() {
         previewStartedMs = Date.now();
       };
 
-      // Soft ambient fill
-       scene.add(new THREE.AmbientLight(night ? 0x536b9b : 0xd0e8ff, night ? 0.28 : 0.65));
+       // Soft ambient fill. Keep references so the time-of-day button can
+       // update an already-mounted WebGL scene without replacing the canvas.
+       const ambient = new THREE.AmbientLight(
+         initialVisual.ambientColor,
+         initialTime === "day" ? 0.65 : initialVisual.ambient === 0x8a5c53 ? 0.48 : 0.28
+       );
+       scene.add(ambient);
       // Hemisphere sky/ground light for realistic outdoor feel
        const hemi = new THREE.HemisphereLight(
-         night ? 0x263b70 : 0x87ceeb,
-         night ? 0x10251d : 0x4caf50,
-         night ? 0.28 : 0.45
+         initialVisual.hemiSky,
+         initialVisual.hemiGround,
+         initialVisual.hemiIntensity
        );
       scene.add(hemi);
       // Main sun — casts shadows
-       const sun = new THREE.DirectionalLight(night ? 0x8faeff : 0xfff5e0, night ? 0.42 : 1.1);
+       const sun = new THREE.DirectionalLight(
+         initialVisual.sun,
+         initialVisual.sunIntensity
+       );
        sun.position.set(6, 14, 8);
       sun.castShadow = true;
       sun.shadow.mapSize.width = 512;
@@ -2257,12 +2394,45 @@ export default function GameScreen() {
       // ── Infinite ground plane — follows player so edges never show ──
       const groundPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(300, 600),
-         new THREE.MeshLambertMaterial({ color: night ? 0x173d2b : C.grass })
+          new THREE.MeshLambertMaterial({ color: initialVisual.grass })
       );
       groundPlane.rotation.x = -Math.PI / 2;
       groundPlane.position.set(0, -0.11, -60);
       groundPlane.receiveShadow = true;
       scene.add(groundPlane);
+
+       let renderedTimeMode = initialTime;
+       const rebuildRowsForTime = () => {
+         for (const row of s.rows) {
+           scene.remove(row.mesh);
+           row.cars.forEach((car) => scene.remove(car.mesh));
+         }
+         for (const coin of s.coins) {
+           if (!coin.collected) scene.remove(coin.mesh);
+         }
+         s.rows = [];
+         s.coins = [];
+         s.maxRowIdx = 0;
+         generateRows(Math.max(VISIBLE_ROWS, s.playerZ + SAFE_AHEAD));
+       };
+       const applyTimeMode = (mode: TimeMode) => {
+         const visual = getTimeVisual(mode);
+         scene.background = new THREE.Color(visual.sky);
+         scene.fog = new THREE.Fog(visual.fog, 14, 28);
+         renderer.setClearColor(visual.sky);
+         ambient.color.setHex(visual.ambientColor);
+         ambient.intensity = mode === "day" ? 0.65 : mode === "evening" ? 0.48 : 0.28;
+         hemi.color.setHex(visual.hemiSky);
+         hemi.groundColor.setHex(visual.hemiGround);
+         hemi.intensity = visual.hemiIntensity;
+         sun.color.setHex(visual.sun);
+         sun.intensity = visual.sunIntensity;
+         (groundPlane.material as THREE.MeshLambertMaterial).color.setHex(visual.grass);
+         if (mode !== renderedTimeMode) {
+           renderedTimeMode = mode;
+           rebuildRowsForTime();
+         }
+       };
 
       const chicken = makePlayerMesh(selectedCharRef.current);
       chicken.position.set(s.playerX, 0, -s.playerZ);
@@ -2278,6 +2448,10 @@ export default function GameScreen() {
         const now = Date.now();
         const dt = Math.min((now - lastMs) / 1000, 0.05);
         lastMs = now;
+
+         if (timeModeRef.current !== renderedTimeMode) {
+           applyTimeMode(timeModeRef.current);
+         }
 
         const webPreviewId = Platform.OS === "web" ? previewCharRef.current : null;
         if (webPreviewId) {
@@ -2700,7 +2874,7 @@ export default function GameScreen() {
 
       {/* Start screen */}
       {!started && !showShop && (
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, compactLayout && styles.overlayCompact]}>
           <Text style={styles.titleEmoji}>
             {CHARACTERS.find((c) => c.id === selectedChar)?.emoji ?? "🐔"}
           </Text>
@@ -2771,7 +2945,7 @@ export default function GameScreen() {
 
       {/* Game over */}
       {gameOver && !showShop && !showAchievements && (
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, compactLayout && styles.overlayCompact]}>
           <Text style={styles.gameOverTitle}>¡Oh no!</Text>
           <Text style={styles.gameOverSub}>¡Fue atropellado!</Text>
           <Text style={styles.gameOverScore}>{score}</Text>
@@ -3189,6 +3363,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  overlayCompact: {
+    gap: 5,
+    paddingVertical: 8,
   },
   titleEmoji: { fontSize: 72 },
   gameName: {
