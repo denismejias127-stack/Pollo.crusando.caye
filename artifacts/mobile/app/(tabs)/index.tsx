@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
+  Animated,
   Dimensions,
   Image,
   PanResponder,
@@ -80,6 +81,7 @@ interface CoinObj {
 type CameraMode = "exterior" | "interior";
 type TimeMode = "day" | "evening" | "night";
 type WeatherMode = "sunny" | "breeze" | "rain" | "storm";
+type ControlMode = "auto" | "touch" | "keyboard" | "gamepad";
 
 const ADMOB_WEB_CLIENT_ID = "ca-pub-TU_CLIENT_ID";
 
@@ -1721,6 +1723,11 @@ export default function GameScreen() {
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [showPauseSettings, setShowPauseSettings] = useState(false);
+  const [controlMode, setControlMode] = useState<ControlMode>(
+    Platform.OS === "web" ? "auto" : "touch"
+  );
   const [totalCoins, setTotalCoins] = useState(0);
   const [unlockedChars, setUnlockedChars] = useState<Set<CharId>>(
     () => new Set<CharId>(["chicken_gold"])
@@ -1748,6 +1755,31 @@ export default function GameScreen() {
   selectedCharRef.current = selectedChar;
   const previewCharRef = useRef<CharId | null>(null);
   previewCharRef.current = previewChar;
+  const pauseCharacterFloat = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!paused) {
+      pauseCharacterFloat.stopAnimation();
+      pauseCharacterFloat.setValue(0);
+      return;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pauseCharacterFloat, {
+          toValue: -7,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pauseCharacterFloat, {
+          toValue: 0,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pauseCharacterFloat, paused]);
 
   // Native Expo GL can fail when one GLView is replaced by another in the
   // same render pass. Leave the surface absent briefly, then mount a fresh
@@ -1780,10 +1812,12 @@ export default function GameScreen() {
   const startedRef = useRef(started);
   const gameOverRef = useRef(gameOver);
   const showShopRef = useRef(showShop);
+  const pausedRef = useRef(paused);
   mutedRef.current = muted;
   startedRef.current = started;
   gameOverRef.current = gameOver;
   showShopRef.current = showShop;
+  pausedRef.current = paused;
   const coinPlayerRef = useRef(coinPlayer);
   coinPlayerRef.current = coinPlayer;
   const crashPlayerRef = useRef(crashPlayer);
@@ -1905,12 +1939,12 @@ export default function GameScreen() {
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
-    if (started && !gameOver && !showShop) {
+    if (started && !gameOver && !showShop && !paused) {
       trafficPlayer.play();
     } else {
       trafficPlayer.pause();
     }
-  }, [started, gameOver, showShop, trafficPlayer]);
+  }, [started, gameOver, showShop, paused, trafficPlayer]);
 
   const playCoinSound = useCallback(() => {
     const p = coinPlayerRef.current;
@@ -2166,12 +2200,20 @@ export default function GameScreen() {
     setShowShop(false);
     setShowAchievements(false);
     setStarted(false);
+    setPaused(false);
+    setShowPauseSettings(false);
     setGameOver(false);
     setScore(0);
     setCoins(0);
     setRecordMessage("");
     setAdMessage("");
   }, [cleanupGameRenderer, resetRoundState]);
+
+  const togglePause = useCallback(() => {
+    if (!startedRef.current || gameOverRef.current || showShopRef.current) return;
+    setShowPauseSettings(false);
+    setPaused((current) => !current);
+  }, []);
 
   // ── PanResponder — only hijacks drag in interior mode ──────────────────
   const panResponder = useRef(
@@ -2546,6 +2588,15 @@ export default function GameScreen() {
         }
         if (activePreviewChar) disposeWebPreview();
 
+        // Pause freezes cars, collisions, coins and the player in place. The
+        // scene is still drawn so the pause menu opens without replacing the
+        // persistent WebGL canvas. Background music is managed separately.
+        if (pausedRef.current) {
+          renderer.render(scene, camera);
+          gl.endFrameEXP();
+          return;
+        }
+
         if (!s.dead) {
           // Move cars
           for (const row of s.rows) {
@@ -2825,6 +2876,99 @@ export default function GameScreen() {
     setGameOver(false);
   }, [generateRows]);
 
+  const startRound = useCallback(() => {
+    if (stateRef.current.scene && stateRef.current.playerMesh) {
+      restart();
+    } else {
+      resetRoundState();
+    }
+    setPaused(false);
+    setShowPauseSettings(false);
+    setStarted(true);
+  }, [resetRoundState, restart]);
+
+  // One input layer for desktop keyboards, Android/TV WebViews and browsers.
+  // Native touch buttons continue to call moveRelative directly. TV remotes
+  // that expose arrow/Enter keys therefore work without a special native API.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleDirection = (key: string) => {
+      if (key === "ArrowUp" || key.toLowerCase() === "w") moveRelative(0, 1);
+      else if (key === "ArrowDown" || key.toLowerCase() === "s") moveRelative(0, -1);
+      else if (key === "ArrowLeft" || key.toLowerCase() === "a") moveRelative(-1, 0);
+      else if (key === "ArrowRight" || key.toLowerCase() === "d") moveRelative(1, 0);
+      else return false;
+      return true;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key;
+      if (handleDirection(key)) {
+        if (startedRef.current && !pausedRef.current) event.preventDefault();
+        return;
+      }
+
+      if (key === "Escape") {
+        event.preventDefault();
+        if (showPauseSettings) setShowPauseSettings(false);
+        else if (pausedRef.current) togglePause();
+        else if (startedRef.current && !gameOverRef.current) togglePause();
+        return;
+      }
+
+      if (key === "Enter" || key === " " || key === "Gamepad0") {
+        if (event.repeat) return;
+        event.preventDefault();
+        if (!startedRef.current && !showShopRef.current) startRound();
+        else if (startedRef.current && !gameOverRef.current && !showPauseSettings) {
+          togglePause();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    // Standard Gamepad API support for USB/Bluetooth controllers. D-pad
+    // buttons are edge-triggered so holding a button does not move repeatedly.
+    let frameId = 0;
+    let previousButtons: boolean[] = [];
+    let previousAxes = { up: false, down: false, left: false, right: false };
+    const pollGamepad = () => {
+      const pads = navigator.getGamepads?.() ?? [];
+      const pad = Array.from(pads).find(Boolean);
+      if (pad) {
+        const buttons = pad.buttons.map((button) => button.pressed);
+        const press = (index: number) => buttons[index] && !previousButtons[index];
+        if (press(12) || (pad.axes[1] ?? 0) < -0.65 && !previousAxes.up) moveRelative(0, 1);
+        if (press(13) || (pad.axes[1] ?? 0) > 0.65 && !previousAxes.down) moveRelative(0, -1);
+        if (press(14) || (pad.axes[0] ?? 0) < -0.65 && !previousAxes.left) moveRelative(-1, 0);
+        if (press(15) || (pad.axes[0] ?? 0) > 0.65 && !previousAxes.right) moveRelative(1, 0);
+        if (press(0) && !showPauseSettings) {
+          if (!startedRef.current && !showShopRef.current) startRound();
+          else if (startedRef.current && !gameOverRef.current) togglePause();
+        }
+        previousButtons = buttons;
+        previousAxes = {
+          up: (pad.axes[1] ?? 0) < -0.65,
+          down: (pad.axes[1] ?? 0) > 0.65,
+          left: (pad.axes[0] ?? 0) < -0.65,
+          right: (pad.axes[0] ?? 0) > 0.65,
+        };
+      } else {
+        previousButtons = [];
+        previousAxes = { up: false, down: false, left: false, right: false };
+      }
+      frameId = requestAnimationFrame(pollGamepad);
+    };
+    frameId = requestAnimationFrame(pollGamepad);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      cancelAnimationFrame(frameId);
+    };
+  }, [moveRelative, showPauseSettings, startRound, togglePause]);
+
   const revivirJugador = useCallback(() => {
     const s = stateRef.current;
     if (!s.scene || !s.playerMesh) return;
@@ -2938,6 +3082,131 @@ export default function GameScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Pause control — also reachable with Enter/center on a keyboard,
+          remote or gamepad. */}
+      {started && !gameOver && (
+        <TouchableOpacity
+          style={styles.pauseBtn}
+          onPress={togglePause}
+          activeOpacity={0.75}
+          accessibilityLabel={paused ? "Continuar partida" : "Pausar partida"}
+        >
+          <Text style={styles.pauseBtnText}>{paused ? "▶" : "☰"}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Pause menu. The WebGL scene stays mounted and frozen behind it;
+          only the background music continues. */}
+      {paused && started && !gameOver && (
+        <View style={styles.pauseOverlay}>
+          <View style={styles.pauseCard}>
+            {showPauseSettings ? (
+              <>
+                <Text style={styles.pauseTitle}>⚙ AJUSTES</Text>
+                <TouchableOpacity
+                  style={styles.pauseOption}
+                  onPress={() =>
+                    setTimeMode((current) =>
+                      current === "day"
+                        ? "evening"
+                        : current === "evening"
+                          ? "night"
+                          : "day"
+                    )
+                  }
+                >
+                  <Text style={styles.pauseOptionText}>
+                    Hora: {timeMode === "day" ? "☀️ DÍA" : timeMode === "evening" ? "🌇 TARDE" : "🌙 NOCHE"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pauseOption}
+                  onPress={() => {
+                    setCameraMode((current) => {
+                      const next = current === "exterior" ? "interior" : "exterior";
+                      if (next === "exterior") {
+                        camYawRef.current = 0;
+                        camPitchRef.current = 0;
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <Text style={styles.pauseOptionText}>
+                    Cámara: {cameraMode === "exterior" ? "🎥 EXTERIOR" : "👁️ INTERIOR"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pauseOption}
+                  onPress={() =>
+                    setControlMode((current) =>
+                      current === "auto"
+                        ? "touch"
+                        : current === "touch"
+                          ? "keyboard"
+                          : current === "keyboard"
+                            ? "gamepad"
+                            : "auto"
+                    )
+                  }
+                >
+                  <Text style={styles.pauseOptionText}>
+                    Control: {controlMode === "auto"
+                      ? "AUTO"
+                      : controlMode === "touch"
+                        ? "TÁCTIL"
+                        : controlMode === "keyboard"
+                          ? "TECLADO"
+                          : "MANDO / TV"}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.controlHelpTitle}>CONTROLES</Text>
+                <Text style={styles.controlHelpText}>
+                  Flechas o WASD: mover{"\n"}Enter / centro: seleccionar y pausar{"\n"}Ratón o táctil: tocar los botones{"\n"}Pulsa “Control” para cambiar la zona de botones
+                </Text>
+                <TouchableOpacity
+                  style={styles.pauseSecondaryBtn}
+                  onPress={() => setShowPauseSettings(false)}
+                >
+                  <Text style={styles.pauseSecondaryText}>← VOLVER</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.pauseCharacterRow}>
+                  <Animated.View
+                    style={[
+                      styles.pauseCharacterBubble,
+                      { transform: [{ translateY: pauseCharacterFloat }] },
+                    ]}
+                  >
+                    <Text style={styles.pauseCharacterEmoji}>
+                      {CHARACTERS.find((c) => c.id === selectedChar)?.emoji ?? "🐔"}
+                    </Text>
+                  </Animated.View>
+                  <View>
+                    <Text style={styles.pauseEyebrow}>PARTIDA EN PAUSA</Text>
+                    <Text style={styles.pauseTitle}>Pollo Crossy</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.pausePrimaryBtn} onPress={togglePause}>
+                  <Text style={styles.pausePrimaryText}>▶ CONTINUAR</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pauseSecondaryBtn}
+                  onPress={() => setShowPauseSettings(true)}
+                >
+                  <Text style={styles.pauseSecondaryText}>⚙ AJUSTES</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pauseExitBtn} onPress={returnToMenu}>
+                  <Text style={styles.pauseExitText}>← SALIR DE LA PARTIDA</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Start screen */}
       {!started && !showShop && (
         <View style={[styles.overlay, compactLayout && styles.overlayCompact]}>
@@ -2958,14 +3227,7 @@ export default function GameScreen() {
           )}
           <TouchableOpacity
             style={styles.startBtn}
-            onPress={() => {
-              if (stateRef.current.scene && stateRef.current.playerMesh) {
-                restart();
-              } else {
-                resetRoundState();
-              }
-              setStarted(true);
-            }}
+            onPress={startRound}
           >
             <Text style={styles.startBtnText}>JUGAR</Text>
           </TouchableOpacity>
@@ -3243,7 +3505,7 @@ export default function GameScreen() {
       })()}
 
       {/* D-pad */}
-      {started && !gameOver && (
+      {started && !gameOver && !paused && controlMode !== "keyboard" && controlMode !== "gamepad" && (
         <View style={styles.dpad}>
           <View style={styles.dpadRow}>
             <TouchableOpacity
@@ -3262,7 +3524,14 @@ export default function GameScreen() {
             >
               <Text style={styles.dpadArrow}>◀</Text>
             </TouchableOpacity>
-            <View style={styles.dpadCenter} />
+            <TouchableOpacity
+              style={styles.dpadCenter}
+              onPress={togglePause}
+              activeOpacity={0.7}
+              accessibilityLabel="Pausar partida"
+            >
+              <Text style={styles.dpadCenterText}>●</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.dpadBtn}
               onPress={() => moveRelative(1, 0)}
@@ -3379,6 +3648,147 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.5,
     marginTop: 2,
+  },
+  pauseBtn: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 80 : 56,
+    right: 78,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 14,
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 20,
+  },
+  pauseBtnText: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  pauseOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.68)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    zIndex: 30,
+  },
+  pauseCard: {
+    width: "100%",
+    maxWidth: 390,
+    backgroundColor: "rgba(16,24,48,0.96)",
+    borderRadius: 26,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,215,0,0.5)",
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  pauseCharacterRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    marginBottom: 4,
+  },
+  pauseCharacterBubble: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: "rgba(255,215,0,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,215,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pauseCharacterEmoji: {
+    fontSize: 46,
+  },
+  pauseEyebrow: {
+    color: "#ffffff99",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  pauseTitle: {
+    color: "#FFD700",
+    fontSize: 27,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  pausePrimaryBtn: {
+    width: "100%",
+    borderRadius: 22,
+    backgroundColor: "#FFD700",
+    alignItems: "center",
+    paddingVertical: 13,
+    marginTop: 4,
+  },
+  pausePrimaryText: {
+    color: "#222",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  pauseSecondaryBtn: {
+    width: "100%",
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  pauseSecondaryText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  pauseExitBtn: {
+    width: "100%",
+    borderRadius: 22,
+    backgroundColor: "rgba(255,68,68,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,100,100,0.45)",
+    alignItems: "center",
+    paddingVertical: 11,
+  },
+  pauseExitText: {
+    color: "#ffb0b0",
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+  },
+  pauseOption: {
+    width: "100%",
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.11)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  pauseOptionText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  controlHelpTitle: {
+    color: "#FFD700",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    marginTop: 3,
+  },
+  controlHelpText: {
+    color: "#ffffffbb",
+    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 20,
   },
   gameOverCoins: {
     backgroundColor: "rgba(255,215,0,0.18)",
@@ -3829,5 +4239,16 @@ const styles = StyleSheet.create({
   dpadCenter: {
     width: BTN,
     height: BTN,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,215,0,0.18)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,215,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dpadCenterText: {
+    color: "#FFD700",
+    fontSize: 18,
+    fontWeight: "900",
   },
 });
