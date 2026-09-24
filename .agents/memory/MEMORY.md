@@ -1,3 +1,4 @@
 - [Expo web publishing](expo-web-publishing.md) — browser URLs need a real Expo web export and SPA server, not only an Expo Go landing page.
 - [Expo GL lifecycle](expo-gl-lifecycle.md) — release renderers and animation loops before switching between game and overlay GL views.
 - [Audio background lifecycle](audio-background-lifecycle.md) — pause Expo audio on native background and web visibility changes; block auto-resume until foreground.
+- [Expo GL performance profiles](expo-gl-performance.md) — low-power WebViews keep the scene look but reduce dynamic lights, shadow cost, and frame workload.

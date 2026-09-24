@@ -303,6 +303,40 @@ function getTimeVisual(mode: TimeMode): TimeVisual {
   };
 }
 
+interface GraphicsProfile {
+  lowPower: boolean;
+  dynamicLights: boolean;
+  shadowMapSize: number;
+  softShadows: boolean;
+  antialias: boolean;
+  targetFrameMs: number;
+}
+
+function getGraphicsProfile(): GraphicsProfile {
+  const nav = (globalThis as {
+    navigator?: { deviceMemory?: number; hardwareConcurrency?: number };
+  }).navigator;
+  const memory = nav?.deviceMemory;
+  const cores = nav?.hardwareConcurrency;
+  const lowPower =
+    Platform.OS === "web" &&
+    ((typeof memory === "number" && memory <= 3) ||
+      (typeof cores === "number" && cores <= 4));
+
+  return {
+    lowPower,
+    // The emissive headlight/window materials stay visible; point lights are
+    // the expensive part on low-end WebViews.
+    dynamicLights: !lowPower,
+    shadowMapSize: lowPower ? 256 : 512,
+    softShadows: !lowPower,
+    antialias: !lowPower,
+    // A stable 30 FPS is smoother than an overloaded, irregular 60 FPS on
+    // low-end phones. Full-power devices remain at the native refresh rate.
+    targetFrameMs: lowPower ? 1000 / 30 : 0,
+  };
+}
+
 // ─── Shared materials (reused across rows for performance) ───────────────────
 const MAT = {
   wheel: new THREE.MeshLambertMaterial({ color: C.wheel }),
@@ -331,7 +365,13 @@ function setShadow(obj: THREE.Object3D, cast = true, receive = true) {
 }
 
 /** Cars travel along X. All cars on a row share the same speed → no overlapping. */
-function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): CarObj {
+function makeCar(
+  dir: 1 | -1,
+  rowZ: number,
+  rowSpeed: number,
+  night = false,
+  dynamicLights = true
+): CarObj {
   const g = new THREE.Group();
   const isTruck = Math.random() < 0.22;
   const len = isTruck ? 2.5 + Math.random() * 0.4 : 1.6 + Math.random() * 0.7;
@@ -504,7 +544,7 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): Ca
     drl.position.set(frontX * 0.96, 0.46, lz);
     g.add(drl);
   });
-  if (night) {
+  if (night && dynamicLights) {
     const lamp = new THREE.PointLight(0xffd36b, 0.7, 2.5);
     lamp.position.set(frontX * 1.05, 0.34, 0);
     g.add(lamp);
@@ -568,7 +608,7 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): Ca
 }
 
 /** Pitched roof house with chimney, door, windows, hedge. */
-function makeHouse(seed: number, night = false): THREE.Group {
+function makeHouse(seed: number, night = false, dynamicLights = true): THREE.Group {
   const g = new THREE.Group();
   const wallColor = C.houseWall[seed % C.houseWall.length];
   const roofColor = C.houseRoof[seed % C.houseRoof.length];
@@ -633,7 +673,7 @@ function makeHouse(seed: number, night = false): THREE.Group {
     glass.position.set(wx2, h * 0.58, d / 2 + 0.04);
     g.add(glass);
   });
-  if (night) {
+  if (night && dynamicLights) {
     const porchLight = new THREE.PointLight(0xffb347, 0.45, 2.4);
     porchLight.position.set(0, h * 0.62, d / 2 + 0.18);
     g.add(porchLight);
@@ -1371,7 +1411,11 @@ function makeCoin(): THREE.Group {
 }
 
 /** Grass row — houses or trees on sides plus sidewalk strip. */
-function makeGrassRow(rowIdx: number, night = false): THREE.Group {
+function makeGrassRow(
+  rowIdx: number,
+  night = false,
+  dynamicLights = true
+): THREE.Group {
   const g = new THREE.Group();
 
   // ground
@@ -1402,7 +1446,7 @@ function makeGrassRow(rowIdx: number, night = false): THREE.Group {
       { side: 1, seed: rowIdx * 2 + 1 },
     ].forEach(({ side, seed }) => {
       const useTree = seed % 3 === 0; // every third slot is a tree
-       const obj = useTree ? makeTree(seed) : makeHouse(seed, night);
+       const obj = useTree ? makeTree(seed) : makeHouse(seed, night, dynamicLights);
       obj.position.set(side * (BOARD_HALF + 2.2), 0, 0);
       g.add(obj);
     });
@@ -1673,6 +1717,7 @@ export default function GameScreen() {
   useRewardedAdScript();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const compactLayout = viewportWidth < 360 || viewportHeight < 650;
+  const graphicsProfileRef = useRef<GraphicsProfile>(getGraphicsProfile());
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
@@ -2169,7 +2214,11 @@ export default function GameScreen() {
       const cars: CarObj[] = [];
 
       if (kind === "grass") {
-        mesh = makeGrassRow(idx, nightModeRef.current);
+         mesh = makeGrassRow(
+           idx,
+           nightModeRef.current,
+           graphicsProfileRef.current.dynamicLights
+         );
       } else {
         mesh = makeRoadRow(idx, nightModeRef.current);
         const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
@@ -2180,7 +2229,13 @@ export default function GameScreen() {
         const loopWidth = (BOARD_HALF + 3) * 2;
         const spacing = loopWidth / numCars;
         for (let c = 0; c < numCars; c++) {
-          const car = makeCar(dir, -idx * CELL, rowSpeed, nightModeRef.current);
+          const car = makeCar(
+            dir,
+            -idx * CELL,
+            rowSpeed,
+            nightModeRef.current,
+            graphicsProfileRef.current.dynamicLights
+          );
           car.x =
             dir === 1
               ? -(BOARD_HALF + 2) - c * spacing
@@ -2258,6 +2313,7 @@ export default function GameScreen() {
   const onContextCreate = useCallback(
     (gl: any) => {
       const s = stateRef.current;
+      const graphicsProfile = graphicsProfileRef.current;
       if (s.animId !== null) cancelAnimationFrame(s.animId);
       s.animId = null;
       s.renderer?.dispose();
@@ -2283,7 +2339,7 @@ export default function GameScreen() {
           clientHeight: h,
         } as any,
         context: gl,
-        antialias: true,
+         antialias: graphicsProfile.antialias,
       });
       renderer.setSize(w, h);
       renderer.autoClear = true;
@@ -2292,7 +2348,9 @@ export default function GameScreen() {
       gl.clearColor(0.529, 0.808, 0.922, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+       renderer.shadowMap.type = graphicsProfile.softShadows
+         ? THREE.PCFSoftShadowMap
+         : THREE.PCFShadowMap;
       s.renderer = renderer;
 
        const scene = new THREE.Scene();
@@ -2380,8 +2438,8 @@ export default function GameScreen() {
        );
        sun.position.set(6, 14, 8);
       sun.castShadow = true;
-      sun.shadow.mapSize.width = 512;
-      sun.shadow.mapSize.height = 512;
+       sun.shadow.mapSize.width = graphicsProfile.shadowMapSize;
+       sun.shadow.mapSize.height = graphicsProfile.shadowMapSize;
       sun.shadow.camera.near = 0.5;
       sun.shadow.camera.far = 60;
       sun.shadow.camera.left = -20;
@@ -2442,10 +2500,18 @@ export default function GameScreen() {
 
       generateRows(Math.max(VISIBLE_ROWS, s.playerZ + SAFE_AHEAD));
 
-      let lastMs = Date.now();
+       let lastMs = Date.now();
+       let lastRenderMs = lastMs;
       const loop = () => {
         s.animId = requestAnimationFrame(loop);
         const now = Date.now();
+         if (
+           graphicsProfile.targetFrameMs > 0 &&
+           now - lastRenderMs < graphicsProfile.targetFrameMs
+         ) {
+           return;
+         }
+         lastRenderMs = now;
         const dt = Math.min((now - lastMs) / 1000, 0.05);
         lastMs = now;
 
