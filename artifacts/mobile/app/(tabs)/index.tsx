@@ -4,6 +4,8 @@ import { GLView } from "expo-gl";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AppState,
+  Animated,
   Dimensions,
   Image,
   PanResponder,
@@ -12,6 +14,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import * as THREE from "three";
@@ -78,6 +81,7 @@ interface CoinObj {
 type CameraMode = "exterior" | "interior";
 type TimeMode = "day" | "evening" | "night";
 type WeatherMode = "sunny" | "breeze" | "rain" | "storm";
+type ControlMode = "auto" | "touch" | "keyboard" | "gamepad";
 
 const ADMOB_WEB_CLIENT_ID = "ca-pub-TU_CLIENT_ID";
 
@@ -245,6 +249,96 @@ const C = {
   chimney: 0x8d6e63,
 };
 
+interface TimeVisual {
+  sky: number;
+  fog: number;
+  grass: number;
+  ambient: number;
+  ambientColor: number;
+  hemiSky: number;
+  hemiGround: number;
+  hemiIntensity: number;
+  sun: number;
+  sunIntensity: number;
+}
+
+function getTimeVisual(mode: TimeMode): TimeVisual {
+  if (mode === "evening") {
+    return {
+      sky: 0xd98768,
+      fog: 0xd98768,
+      grass: 0x3d7f46,
+      ambient: 0x8a5c53,
+      ambientColor: 0xffc09a,
+      hemiSky: 0xe58b72,
+      hemiGround: 0x314d32,
+      hemiIntensity: 0.42,
+      sun: 0xffa45e,
+      sunIntensity: 0.8,
+    };
+  }
+  if (mode === "night") {
+    return {
+      sky: 0x071329,
+      fog: 0x071329,
+      grass: 0x173d2b,
+      ambient: 0x536b9b,
+      ambientColor: 0x8aa9e8,
+      hemiSky: 0x263b70,
+      hemiGround: 0x10251d,
+      hemiIntensity: 0.28,
+      sun: 0x8faeff,
+      sunIntensity: 0.42,
+    };
+  }
+  return {
+    sky: C.sky,
+    fog: C.sky,
+    grass: C.grass,
+    ambient: 0xd0e8ff,
+    ambientColor: 0xd0e8ff,
+    hemiSky: 0x87ceeb,
+    hemiGround: 0x4caf50,
+    hemiIntensity: 0.45,
+    sun: 0xfff5e0,
+    sunIntensity: 1.1,
+  };
+}
+
+interface GraphicsProfile {
+  lowPower: boolean;
+  dynamicLights: boolean;
+  shadowMapSize: number;
+  softShadows: boolean;
+  antialias: boolean;
+  targetFrameMs: number;
+}
+
+function getGraphicsProfile(): GraphicsProfile {
+  const nav = (globalThis as {
+    navigator?: { deviceMemory?: number; hardwareConcurrency?: number };
+  }).navigator;
+  const memory = nav?.deviceMemory;
+  const cores = nav?.hardwareConcurrency;
+  const lowPower =
+    Platform.OS === "web" &&
+    ((typeof memory === "number" && memory <= 3) ||
+      (typeof cores === "number" && cores <= 4));
+
+  return {
+    lowPower,
+    // The emissive headlight/window materials stay visible; point lights are
+    // the expensive part on low-end WebViews.
+    dynamicLights: !lowPower,
+    shadowMapSize: lowPower ? 256 : 512,
+    softShadows: !lowPower,
+    antialias: !lowPower,
+    // A stable 30 FPS is smoother than an overloaded, irregular 60 FPS on
+    // low-end phones. Full-power devices remain at the native refresh rate.
+    targetFrameMs: lowPower ? 1000 / 30 : 0,
+  };
+}
+
 // ─── Shared materials (reused across rows for performance) ───────────────────
 const MAT = {
   wheel: new THREE.MeshLambertMaterial({ color: C.wheel }),
@@ -273,7 +367,13 @@ function setShadow(obj: THREE.Object3D, cast = true, receive = true) {
 }
 
 /** Cars travel along X. All cars on a row share the same speed → no overlapping. */
-function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): CarObj {
+function makeCar(
+  dir: 1 | -1,
+  rowZ: number,
+  rowSpeed: number,
+  night = false,
+  dynamicLights = true
+): CarObj {
   const g = new THREE.Group();
   const isTruck = Math.random() < 0.22;
   const len = isTruck ? 2.5 + Math.random() * 0.4 : 1.6 + Math.random() * 0.7;
@@ -446,7 +546,7 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): Ca
     drl.position.set(frontX * 0.96, 0.46, lz);
     g.add(drl);
   });
-  if (night) {
+  if (night && dynamicLights) {
     const lamp = new THREE.PointLight(0xffd36b, 0.7, 2.5);
     lamp.position.set(frontX * 1.05, 0.34, 0);
     g.add(lamp);
@@ -510,7 +610,7 @@ function makeCar(dir: 1 | -1, rowZ: number, rowSpeed: number, night = false): Ca
 }
 
 /** Pitched roof house with chimney, door, windows, hedge. */
-function makeHouse(seed: number, night = false): THREE.Group {
+function makeHouse(seed: number, night = false, dynamicLights = true): THREE.Group {
   const g = new THREE.Group();
   const wallColor = C.houseWall[seed % C.houseWall.length];
   const roofColor = C.houseRoof[seed % C.houseRoof.length];
@@ -575,7 +675,7 @@ function makeHouse(seed: number, night = false): THREE.Group {
     glass.position.set(wx2, h * 0.58, d / 2 + 0.04);
     g.add(glass);
   });
-  if (night) {
+  if (night && dynamicLights) {
     const porchLight = new THREE.PointLight(0xffb347, 0.45, 2.4);
     porchLight.position.set(0, h * 0.62, d / 2 + 0.18);
     g.add(porchLight);
@@ -1313,7 +1413,11 @@ function makeCoin(): THREE.Group {
 }
 
 /** Grass row — houses or trees on sides plus sidewalk strip. */
-function makeGrassRow(rowIdx: number, night = false): THREE.Group {
+function makeGrassRow(
+  rowIdx: number,
+  night = false,
+  dynamicLights = true
+): THREE.Group {
   const g = new THREE.Group();
 
   // ground
@@ -1344,7 +1448,7 @@ function makeGrassRow(rowIdx: number, night = false): THREE.Group {
       { side: 1, seed: rowIdx * 2 + 1 },
     ].forEach(({ side, seed }) => {
       const useTree = seed % 3 === 0; // every third slot is a tree
-       const obj = useTree ? makeTree(seed) : makeHouse(seed, night);
+       const obj = useTree ? makeTree(seed) : makeHouse(seed, night, dynamicLights);
       obj.position.set(side * (BOARD_HALF + 2.2), 0, 0);
       g.add(obj);
     });
@@ -1442,6 +1546,7 @@ function makeRoadRow(rowIdx: number, night = false): THREE.Group {
 // (only one WebGL context can be active at a time on Expo GL).
 function CharacterPreviewGL({ charId }: { charId: CharId }) {
   const animRef = useRef<number | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   const onContextCreate = useCallback(
     (gl: any) => {
@@ -1457,6 +1562,7 @@ function CharacterPreviewGL({ charId }: { charId: CharId }) {
         context: gl,
         antialias: true,
       });
+      rendererRef.current = renderer;
       renderer.setSize(w, h);
       renderer.setClearColor(0x141428);
       renderer.shadowMap.enabled = false;
@@ -1516,7 +1622,11 @@ function CharacterPreviewGL({ charId }: { charId: CharId }) {
     [charId]
   );
 
-  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+  useEffect(() => () => {
+    if (animRef.current !== null) cancelAnimationFrame(animRef.current);
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+  }, []);
 
   return (
     <GLView key={charId} style={styles.previewGLView} onContextCreate={onContextCreate} />
@@ -1533,6 +1643,7 @@ function ThumbnailMinter({
   onDone: (id: CharId, uri: string) => void;
 }) {
   const doneRef = useRef(false);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   const onContextCreate = useCallback(
     async (gl: any) => {
@@ -1548,6 +1659,7 @@ function ThumbnailMinter({
         context: gl,
         antialias: false,
       });
+      rendererRef.current = renderer;
       renderer.setSize(w, h);
       renderer.setClearColor(0x1a1a2e);
 
@@ -1586,6 +1698,11 @@ function ThumbnailMinter({
     [charId, onDone]
   );
 
+  useEffect(() => () => {
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+  }, []);
+
   // Tiny but real dimensions so drawingBufferWidth/Height are non-zero
   return (
     <GLView
@@ -1600,15 +1717,25 @@ function ThumbnailMinter({
 export default function GameScreen() {
   const webGLAvailable = useWebGLAvailable();
   useRewardedAdScript();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const compactLayout = viewportWidth < 360 || viewportHeight < 650;
+  const graphicsProfileRef = useRef<GraphicsProfile>(getGraphicsProfile());
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [showPauseSettings, setShowPauseSettings] = useState(false);
+  const [controlMode, setControlMode] = useState<ControlMode>(
+    Platform.OS === "web" ? "auto" : "touch"
+  );
   const [totalCoins, setTotalCoins] = useState(0);
   const [unlockedChars, setUnlockedChars] = useState<Set<CharId>>(
     () => new Set<CharId>(["chicken_gold"])
   );
   const [selectedChar, setSelectedChar] = useState<CharId>("chicken_gold");
   const [showShop, setShowShop] = useState(false);
+  const [gameGLReady, setGameGLReady] = useState(false);
+  const [gameGLKey, setGameGLKey] = useState(0);
   const [muted, setMuted] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [recordMessage, setRecordMessage] = useState("");
@@ -1626,6 +1753,52 @@ export default function GameScreen() {
   const [saveLoaded, setSaveLoaded] = useState(false);
   const selectedCharRef = useRef<CharId>("chicken_gold");
   selectedCharRef.current = selectedChar;
+  const previewCharRef = useRef<CharId | null>(null);
+  previewCharRef.current = previewChar;
+  const pauseCharacterFloat = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!paused) {
+      pauseCharacterFloat.stopAnimation();
+      pauseCharacterFloat.setValue(0);
+      return;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pauseCharacterFloat, {
+          toValue: -7,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pauseCharacterFloat, {
+          toValue: 0,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pauseCharacterFloat, paused]);
+
+  // Native Expo GL can fail when one GLView is replaced by another in the
+  // same render pass. Leave the surface absent briefly, then mount a fresh
+  // instance after the shop/preview GLView has been fully removed.
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      setGameGLReady(true);
+      return;
+    }
+    if (showShop || showAchievements || previewChar || mintingChar) {
+      setGameGLReady(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setGameGLKey((previous) => previous + 1);
+      setGameGLReady(true);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [showShop, showAchievements, previewChar, mintingChar]);
 
   // ── Audio: coin SFX + looping background music ────────────────────────────
   const coinPlayer = useAudioPlayer(require("../../assets/sounds/coin.mp3"));
@@ -1634,6 +1807,17 @@ export default function GameScreen() {
   const crashPlayer = useAudioPlayer(require("../../assets/sounds/crash.mp3"));
   const hopPlayer = useAudioPlayer(require("../../assets/sounds/hop.mp3"));
   const characterPlayer = useAudioPlayer(require("../../assets/sounds/character.mp3"));
+  const audioSuspendedRef = useRef(false);
+  const mutedRef = useRef(muted);
+  const startedRef = useRef(started);
+  const gameOverRef = useRef(gameOver);
+  const showShopRef = useRef(showShop);
+  const pausedRef = useRef(paused);
+  mutedRef.current = muted;
+  startedRef.current = started;
+  gameOverRef.current = gameOver;
+  showShopRef.current = showShop;
+  pausedRef.current = paused;
   const coinPlayerRef = useRef(coinPlayer);
   coinPlayerRef.current = coinPlayer;
   const crashPlayerRef = useRef(crashPlayer);
@@ -1660,6 +1844,7 @@ export default function GameScreen() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === "web") return;
     if (showShop && Object.keys(charThumbnails).length === 0 && mintingChar === null) {
       mintQueueRef.current = CHARACTERS.map((c) => c.id).slice(1); // head pops below
       setMintingChar(CHARACTERS[0].id);
@@ -1679,9 +1864,66 @@ export default function GameScreen() {
     characterPlayer.volume = 0.8;
   }, [musicPlayer, trafficPlayer, characterPlayer]);
 
+  // Stop looping audio whenever the app, tab, browser window, or WebView
+  // loses focus. The suspended ref prevents the "loaded and not playing"
+  // effect below from immediately starting the song again in the background.
+  useEffect(() => {
+    const pauseBackgroundAudio = () => {
+      audioSuspendedRef.current = true;
+      musicPlayer.pause();
+      trafficPlayer.pause();
+    };
+    const resumeForegroundAudio = () => {
+      audioSuspendedRef.current = false;
+      if (!mutedRef.current) {
+        musicPlayer.play();
+      }
+      if (startedRef.current && !gameOverRef.current && !showShopRef.current) {
+        trafficPlayer.play();
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") resumeForegroundAudio();
+      else pauseBackgroundAudio();
+    });
+
+    let removeWebListeners: (() => void) | undefined;
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const handleVisibility = () => {
+        if (document.visibilityState === "visible") resumeForegroundAudio();
+        else pauseBackgroundAudio();
+      };
+      const handleBlur = () => pauseBackgroundAudio();
+      const handleFocus = () => {
+        if (document.visibilityState === "visible") resumeForegroundAudio();
+      };
+      document.addEventListener("visibilitychange", handleVisibility);
+      window.addEventListener("blur", handleBlur);
+      window.addEventListener("focus", handleFocus);
+      window.addEventListener("pagehide", handleBlur);
+      removeWebListeners = () => {
+        document.removeEventListener("visibilitychange", handleVisibility);
+        window.removeEventListener("blur", handleBlur);
+        window.removeEventListener("focus", handleFocus);
+        window.removeEventListener("pagehide", handleBlur);
+      };
+    }
+
+    return () => {
+      appStateSubscription.remove();
+      removeWebListeners?.();
+    };
+  }, [musicPlayer, trafficPlayer]);
+
   // Start music only once the track is loaded and ready
   useEffect(() => {
-    if (musicStatus.isLoaded && !musicStatus.playing) {
+    if (
+      musicStatus.isLoaded &&
+      !musicStatus.playing &&
+      !audioSuspendedRef.current &&
+      !mutedRef.current
+    ) {
       musicPlayer.play();
     }
   }, [musicStatus.isLoaded, musicStatus.playing, musicPlayer]);
@@ -1690,16 +1932,19 @@ export default function GameScreen() {
   useEffect(() => {
     musicPlayer.volume = muted ? 0 : 0.45;
     trafficPlayer.volume = muted ? 0 : 0.25;
-  }, [muted, musicPlayer, trafficPlayer]);
+    if (!muted && musicStatus.isLoaded && !musicStatus.playing && !audioSuspendedRef.current) {
+      musicPlayer.play();
+    }
+  }, [muted, musicPlayer, trafficPlayer, musicStatus.isLoaded, musicStatus.playing]);
 
   // Traffic ambience only while actively playing a round
   useEffect(() => {
-    if (started && !gameOver && !showShop) {
+    if (started && !gameOver && !showShop && !paused) {
       trafficPlayer.play();
     } else {
       trafficPlayer.pause();
     }
-  }, [started, gameOver, showShop, trafficPlayer]);
+  }, [started, gameOver, showShop, paused, trafficPlayer]);
 
   const playCoinSound = useCallback(() => {
     const p = coinPlayerRef.current;
@@ -1903,6 +2148,73 @@ export default function GameScreen() {
   // keep ref in sync with state so the game loop can read it without re-binding
   cameraModeRef.current = cameraMode;
 
+  const cleanupGameRenderer = useCallback(() => {
+    const s = stateRef.current;
+    if (s.animId !== null) {
+      cancelAnimationFrame(s.animId);
+      s.animId = null;
+    }
+    s.renderer?.dispose();
+    s.renderer = null;
+    s.scene = null;
+    s.camera = null;
+    s.playerMesh = null;
+    s.gl = null;
+    s.rows = [];
+    s.coins = [];
+    s.maxRowIdx = 0;
+  }, []);
+
+  const resetRoundState = useCallback(() => {
+    const s = stateRef.current;
+    s.playerX = 0;
+    s.playerZ = 0;
+    s.dead = false;
+    s.deadMs = 0;
+    s.score = 0;
+    s.maxScore = 0;
+    s.coinScore = 0;
+    s.hop = { active: false, fromX: 0, fromZ: 0, toX: 0, toZ: 0, startMs: 0 };
+  }, []);
+
+  const openShop = useCallback(() => {
+    if (Platform.OS !== "web") cleanupGameRenderer();
+    setPreviewChar(null);
+    setShowAchievements(false);
+    setShowShop(true);
+  }, [cleanupGameRenderer]);
+
+  const openAchievements = useCallback(() => {
+    if (Platform.OS !== "web") cleanupGameRenderer();
+    setPreviewChar(null);
+    setShowShop(false);
+    setShowAchievements(true);
+  }, [cleanupGameRenderer]);
+
+  const returnToMenu = useCallback(() => {
+    if (Platform.OS !== "web") cleanupGameRenderer();
+    resetRoundState();
+    mintQueueRef.current = [];
+    setMintingChar(null);
+    setPreviewChar(null);
+    setShowShop(false);
+    setShowAchievements(false);
+    setStarted(false);
+    setPaused(false);
+    setShowPauseSettings(false);
+    setGameOver(false);
+    setScore(0);
+    setCoins(0);
+    setRecordMessage("");
+    setAdMessage("");
+  }, [cleanupGameRenderer, resetRoundState]);
+
+  const togglePause = useCallback(() => {
+    if (!startedRef.current || gameOverRef.current || showShopRef.current) return;
+    setShowPauseSettings(false);
+    setPaused((current) => !current);
+  }, []);
+
   // ── PanResponder — only hijacks drag in interior mode ──────────────────
   const panResponder = useRef(
     PanResponder.create({
@@ -1944,7 +2256,11 @@ export default function GameScreen() {
       const cars: CarObj[] = [];
 
       if (kind === "grass") {
-        mesh = makeGrassRow(idx, nightModeRef.current);
+         mesh = makeGrassRow(
+           idx,
+           nightModeRef.current,
+           graphicsProfileRef.current.dynamicLights
+         );
       } else {
         mesh = makeRoadRow(idx, nightModeRef.current);
         const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
@@ -1955,7 +2271,13 @@ export default function GameScreen() {
         const loopWidth = (BOARD_HALF + 3) * 2;
         const spacing = loopWidth / numCars;
         for (let c = 0; c < numCars; c++) {
-          const car = makeCar(dir, -idx * CELL, rowSpeed, nightModeRef.current);
+          const car = makeCar(
+            dir,
+            -idx * CELL,
+            rowSpeed,
+            nightModeRef.current,
+            graphicsProfileRef.current.dynamicLights
+          );
           car.x =
             dir === 1
               ? -(BOARD_HALF + 2) - c * spacing
@@ -2033,6 +2355,17 @@ export default function GameScreen() {
   const onContextCreate = useCallback(
     (gl: any) => {
       const s = stateRef.current;
+      const graphicsProfile = graphicsProfileRef.current;
+      if (s.animId !== null) cancelAnimationFrame(s.animId);
+      s.animId = null;
+      s.renderer?.dispose();
+      s.renderer = null;
+      s.scene = null;
+      s.camera = null;
+      s.playerMesh = null;
+      s.rows = [];
+      s.coins = [];
+      s.maxRowIdx = 0;
       s.gl = gl;
       const w = gl.drawingBufferWidth;
       const h = gl.drawingBufferHeight;
@@ -2048,7 +2381,7 @@ export default function GameScreen() {
           clientHeight: h,
         } as any,
         context: gl,
-        antialias: true,
+         antialias: graphicsProfile.antialias,
       });
       renderer.setSize(w, h);
       renderer.autoClear = true;
@@ -2057,15 +2390,17 @@ export default function GameScreen() {
       gl.clearColor(0.529, 0.808, 0.922, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+       renderer.shadowMap.type = graphicsProfile.softShadows
+         ? THREE.PCFSoftShadowMap
+         : THREE.PCFShadowMap;
       s.renderer = renderer;
 
-      const scene = new THREE.Scene();
-       const night = nightModeRef.current;
-       const skyColor = night ? 0x071329 : C.sky;
-       scene.background = new THREE.Color(skyColor);
-      // fog starts close so the tile edges are never visible
-       scene.fog = new THREE.Fog(skyColor, 14, 28);
+       const scene = new THREE.Scene();
+       const initialTime = timeModeRef.current;
+       const initialVisual = getTimeVisual(initialTime);
+       scene.background = new THREE.Color(initialVisual.sky);
+       // Fog starts close so the tile edges are never visible.
+       scene.fog = new THREE.Fog(initialVisual.fog, 14, 28);
       s.scene = scene;
 
       const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 80);
@@ -2073,21 +2408,80 @@ export default function GameScreen() {
       camera.lookAt(0, 0, 0);
       s.camera = camera;
 
-      // Soft ambient fill
-       scene.add(new THREE.AmbientLight(night ? 0x536b9b : 0xd0e8ff, night ? 0.28 : 0.65));
+      let previewScene: THREE.Scene | null = null;
+      let previewCamera: THREE.PerspectiveCamera | null = null;
+      let previewMesh: THREE.Group | null = null;
+      let activePreviewChar: CharId | null = null;
+      let previewStartedMs = 0;
+
+      const disposeWebPreview = () => {
+        if (previewMesh && previewScene) {
+          previewScene.remove(previewMesh);
+          previewMesh.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            mesh.geometry.dispose();
+            const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            materials.forEach((material) => material.dispose());
+          });
+        }
+        previewScene = null;
+        previewCamera = null;
+        previewMesh = null;
+        activePreviewChar = null;
+      };
+
+      const createWebPreview = (charId: CharId) => {
+        disposeWebPreview();
+        previewScene = new THREE.Scene();
+        previewScene.background = new THREE.Color(0x141428);
+        previewCamera = new THREE.PerspectiveCamera(40, w / h, 0.1, 50);
+        previewCamera.position.set(0, 0.65, 2.4);
+        previewCamera.lookAt(0, 0.15, 0);
+        previewScene.add(new THREE.AmbientLight(0xffffff, 0.75));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+        sun.position.set(2, 4, 2);
+        previewScene.add(sun);
+        const fill = new THREE.DirectionalLight(0x8080ff, 0.3);
+        fill.position.set(-2, 1, -1);
+        previewScene.add(fill);
+        const ground = new THREE.Mesh(
+          new THREE.CircleGeometry(0.9, 40),
+          new THREE.MeshLambertMaterial({ color: 0x1e1e3a })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.25;
+        previewScene.add(ground);
+        previewMesh = makePlayerMesh(charId);
+        previewMesh.scale.setScalar(1.05);
+        previewScene.add(previewMesh);
+        activePreviewChar = charId;
+        previewStartedMs = Date.now();
+      };
+
+       // Soft ambient fill. Keep references so the time-of-day button can
+       // update an already-mounted WebGL scene without replacing the canvas.
+       const ambient = new THREE.AmbientLight(
+         initialVisual.ambientColor,
+         initialTime === "day" ? 0.65 : initialVisual.ambient === 0x8a5c53 ? 0.48 : 0.28
+       );
+       scene.add(ambient);
       // Hemisphere sky/ground light for realistic outdoor feel
        const hemi = new THREE.HemisphereLight(
-         night ? 0x263b70 : 0x87ceeb,
-         night ? 0x10251d : 0x4caf50,
-         night ? 0.28 : 0.45
+         initialVisual.hemiSky,
+         initialVisual.hemiGround,
+         initialVisual.hemiIntensity
        );
       scene.add(hemi);
       // Main sun — casts shadows
-       const sun = new THREE.DirectionalLight(night ? 0x8faeff : 0xfff5e0, night ? 0.42 : 1.1);
+       const sun = new THREE.DirectionalLight(
+         initialVisual.sun,
+         initialVisual.sunIntensity
+       );
        sun.position.set(6, 14, 8);
       sun.castShadow = true;
-      sun.shadow.mapSize.width = 512;
-      sun.shadow.mapSize.height = 512;
+       sun.shadow.mapSize.width = graphicsProfile.shadowMapSize;
+       sun.shadow.mapSize.height = graphicsProfile.shadowMapSize;
       sun.shadow.camera.near = 0.5;
       sun.shadow.camera.far = 60;
       sun.shadow.camera.left = -20;
@@ -2100,27 +2494,108 @@ export default function GameScreen() {
       // ── Infinite ground plane — follows player so edges never show ──
       const groundPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(300, 600),
-         new THREE.MeshLambertMaterial({ color: night ? 0x173d2b : C.grass })
+          new THREE.MeshLambertMaterial({ color: initialVisual.grass })
       );
       groundPlane.rotation.x = -Math.PI / 2;
       groundPlane.position.set(0, -0.11, -60);
       groundPlane.receiveShadow = true;
       scene.add(groundPlane);
 
+       let renderedTimeMode = initialTime;
+       const rebuildRowsForTime = () => {
+         for (const row of s.rows) {
+           scene.remove(row.mesh);
+           row.cars.forEach((car) => scene.remove(car.mesh));
+         }
+         for (const coin of s.coins) {
+           if (!coin.collected) scene.remove(coin.mesh);
+         }
+         s.rows = [];
+         s.coins = [];
+         s.maxRowIdx = 0;
+         generateRows(Math.max(VISIBLE_ROWS, s.playerZ + SAFE_AHEAD));
+       };
+       const applyTimeMode = (mode: TimeMode) => {
+         const visual = getTimeVisual(mode);
+         scene.background = new THREE.Color(visual.sky);
+         scene.fog = new THREE.Fog(visual.fog, 14, 28);
+         renderer.setClearColor(visual.sky);
+         ambient.color.setHex(visual.ambientColor);
+         ambient.intensity = mode === "day" ? 0.65 : mode === "evening" ? 0.48 : 0.28;
+         hemi.color.setHex(visual.hemiSky);
+         hemi.groundColor.setHex(visual.hemiGround);
+         hemi.intensity = visual.hemiIntensity;
+         sun.color.setHex(visual.sun);
+         sun.intensity = visual.sunIntensity;
+         (groundPlane.material as THREE.MeshLambertMaterial).color.setHex(visual.grass);
+         if (mode !== renderedTimeMode) {
+           renderedTimeMode = mode;
+           rebuildRowsForTime();
+         }
+       };
+
       const chicken = makePlayerMesh(selectedCharRef.current);
-      chicken.position.set(0, 0, 0);
+      chicken.position.set(s.playerX, 0, -s.playerZ);
       chicken.rotation.y = Math.PI;
       scene.add(chicken);
       s.playerMesh = chicken;
 
-      generateRows(VISIBLE_ROWS);
+      generateRows(Math.max(VISIBLE_ROWS, s.playerZ + SAFE_AHEAD));
 
-      let lastMs = Date.now();
+       let lastMs = Date.now();
+       let lastRenderMs = lastMs;
       const loop = () => {
         s.animId = requestAnimationFrame(loop);
         const now = Date.now();
+         if (
+           graphicsProfile.targetFrameMs > 0 &&
+           now - lastRenderMs < graphicsProfile.targetFrameMs
+         ) {
+           return;
+         }
+         lastRenderMs = now;
         const dt = Math.min((now - lastMs) / 1000, 0.05);
         lastMs = now;
+
+         if (timeModeRef.current !== renderedTimeMode) {
+           applyTimeMode(timeModeRef.current);
+         }
+
+        const webPreviewId = Platform.OS === "web" ? previewCharRef.current : null;
+        if (webPreviewId) {
+          if (activePreviewChar !== webPreviewId || !previewScene || !previewCamera || !previewMesh) {
+            createWebPreview(webPreviewId);
+          }
+          const previewTime = (now - previewStartedMs) / 1000;
+          const breath = 1 + Math.sin(previewTime * Math.PI * 2) * 0.025;
+          previewMesh!.rotation.y = previewTime * 0.65;
+          previewMesh!.rotation.z = Math.sin(previewTime * Math.PI * 2) * 0.025;
+          previewMesh!.scale.set(1.05 * breath, 1.05 / breath, 1.05 * breath);
+          previewMesh!.position.y = Math.abs(Math.sin(previewTime * Math.PI * 2)) * 0.035;
+          const swing = Math.sin(previewTime * Math.PI * 2) * 0.32;
+          const previewLegs = previewMesh!.userData.legs as THREE.Group[] | undefined;
+          if (previewLegs) {
+            if (previewLegs.length >= 4) {
+              previewLegs[0].rotation.x = swing; previewLegs[1].rotation.x = -swing;
+              previewLegs[2].rotation.x = -swing; previewLegs[3].rotation.x = swing;
+            } else if (previewLegs.length === 2) {
+              previewLegs[0].rotation.x = swing; previewLegs[1].rotation.x = -swing;
+            }
+          }
+          renderer.render(previewScene!, previewCamera!);
+          gl.endFrameEXP();
+          return;
+        }
+        if (activePreviewChar) disposeWebPreview();
+
+        // Pause freezes cars, collisions, coins and the player in place. The
+        // scene is still drawn so the pause menu opens without replacing the
+        // persistent WebGL canvas. Background music is managed separately.
+        if (pausedRef.current) {
+          renderer.render(scene, camera);
+          gl.endFrameEXP();
+          return;
+        }
 
         if (!s.dead) {
           // Move cars
@@ -2401,6 +2876,99 @@ export default function GameScreen() {
     setGameOver(false);
   }, [generateRows]);
 
+  const startRound = useCallback(() => {
+    if (stateRef.current.scene && stateRef.current.playerMesh) {
+      restart();
+    } else {
+      resetRoundState();
+    }
+    setPaused(false);
+    setShowPauseSettings(false);
+    setStarted(true);
+  }, [resetRoundState, restart]);
+
+  // One input layer for desktop keyboards, Android/TV WebViews and browsers.
+  // Native touch buttons continue to call moveRelative directly. TV remotes
+  // that expose arrow/Enter keys therefore work without a special native API.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleDirection = (key: string) => {
+      if (key === "ArrowUp" || key.toLowerCase() === "w") moveRelative(0, 1);
+      else if (key === "ArrowDown" || key.toLowerCase() === "s") moveRelative(0, -1);
+      else if (key === "ArrowLeft" || key.toLowerCase() === "a") moveRelative(-1, 0);
+      else if (key === "ArrowRight" || key.toLowerCase() === "d") moveRelative(1, 0);
+      else return false;
+      return true;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key;
+      if (handleDirection(key)) {
+        if (startedRef.current && !pausedRef.current) event.preventDefault();
+        return;
+      }
+
+      if (key === "Escape") {
+        event.preventDefault();
+        if (showPauseSettings) setShowPauseSettings(false);
+        else if (pausedRef.current) togglePause();
+        else if (startedRef.current && !gameOverRef.current) togglePause();
+        return;
+      }
+
+      if (key === "Enter" || key === " " || key === "Gamepad0") {
+        if (event.repeat) return;
+        event.preventDefault();
+        if (!startedRef.current && !showShopRef.current) startRound();
+        else if (startedRef.current && !gameOverRef.current && !showPauseSettings) {
+          togglePause();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    // Standard Gamepad API support for USB/Bluetooth controllers. D-pad
+    // buttons are edge-triggered so holding a button does not move repeatedly.
+    let frameId = 0;
+    let previousButtons: boolean[] = [];
+    let previousAxes = { up: false, down: false, left: false, right: false };
+    const pollGamepad = () => {
+      const pads = navigator.getGamepads?.() ?? [];
+      const pad = Array.from(pads).find(Boolean);
+      if (pad) {
+        const buttons = pad.buttons.map((button) => button.pressed);
+        const press = (index: number) => buttons[index] && !previousButtons[index];
+        if (press(12) || (pad.axes[1] ?? 0) < -0.65 && !previousAxes.up) moveRelative(0, 1);
+        if (press(13) || (pad.axes[1] ?? 0) > 0.65 && !previousAxes.down) moveRelative(0, -1);
+        if (press(14) || (pad.axes[0] ?? 0) < -0.65 && !previousAxes.left) moveRelative(-1, 0);
+        if (press(15) || (pad.axes[0] ?? 0) > 0.65 && !previousAxes.right) moveRelative(1, 0);
+        if (press(0) && !showPauseSettings) {
+          if (!startedRef.current && !showShopRef.current) startRound();
+          else if (startedRef.current && !gameOverRef.current) togglePause();
+        }
+        previousButtons = buttons;
+        previousAxes = {
+          up: (pad.axes[1] ?? 0) < -0.65,
+          down: (pad.axes[1] ?? 0) > 0.65,
+          left: (pad.axes[0] ?? 0) < -0.65,
+          right: (pad.axes[0] ?? 0) > 0.65,
+        };
+      } else {
+        previousButtons = [];
+        previousAxes = { up: false, down: false, left: false, right: false };
+      }
+      frameId = requestAnimationFrame(pollGamepad);
+    };
+    frameId = requestAnimationFrame(pollGamepad);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      cancelAnimationFrame(frameId);
+    };
+  }, [moveRelative, showPauseSettings, startRound, togglePause]);
+
   const revivirJugador = useCallback(() => {
     const s = stateRef.current;
     if (!s.scene || !s.playerMesh) return;
@@ -2450,17 +3018,20 @@ export default function GameScreen() {
 
   return (
     <View style={styles.root} {...panResponder.panHandlers}>
-      {/* Main game renderer — hidden while a character preview or thumbnail
-          minting is active so only one WebGL context runs at a time. */}
-      {webGLAvailable && !previewChar && !mintingChar && (
+      {/* Main game renderer — keep only one WebGL context mounted at a time.
+          Shop and achievements screens explicitly release the game renderer. */}
+      {webGLAvailable &&
+        (Platform.OS === "web" ||
+          (gameGLReady && !showShop && !showAchievements && !previewChar && !mintingChar)) && (
         <GLView
+          key={gameGLKey}
           style={StyleSheet.absoluteFill}
           onContextCreate={onContextCreate}
         />
       )}
 
       {/* Thumbnail minter — offscreen, replaces main GLView during minting */}
-      {mintingChar && (
+      {Platform.OS !== "web" && mintingChar && (
         <ThumbnailMinter charId={mintingChar} onDone={handleMintDone} />
       )}
 
@@ -2511,9 +3082,134 @@ export default function GameScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Pause control — also reachable with Enter/center on a keyboard,
+          remote or gamepad. */}
+      {started && !gameOver && (
+        <TouchableOpacity
+          style={styles.pauseBtn}
+          onPress={togglePause}
+          activeOpacity={0.75}
+          accessibilityLabel={paused ? "Continuar partida" : "Pausar partida"}
+        >
+          <Text style={styles.pauseBtnText}>{paused ? "▶" : "☰"}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Pause menu. The WebGL scene stays mounted and frozen behind it;
+          only the background music continues. */}
+      {paused && started && !gameOver && (
+        <View style={styles.pauseOverlay}>
+          <View style={styles.pauseCard}>
+            {showPauseSettings ? (
+              <>
+                <Text style={styles.pauseTitle}>⚙ AJUSTES</Text>
+                <TouchableOpacity
+                  style={styles.pauseOption}
+                  onPress={() =>
+                    setTimeMode((current) =>
+                      current === "day"
+                        ? "evening"
+                        : current === "evening"
+                          ? "night"
+                          : "day"
+                    )
+                  }
+                >
+                  <Text style={styles.pauseOptionText}>
+                    Hora: {timeMode === "day" ? "☀️ DÍA" : timeMode === "evening" ? "🌇 TARDE" : "🌙 NOCHE"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pauseOption}
+                  onPress={() => {
+                    setCameraMode((current) => {
+                      const next = current === "exterior" ? "interior" : "exterior";
+                      if (next === "exterior") {
+                        camYawRef.current = 0;
+                        camPitchRef.current = 0;
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <Text style={styles.pauseOptionText}>
+                    Cámara: {cameraMode === "exterior" ? "🎥 EXTERIOR" : "👁️ INTERIOR"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pauseOption}
+                  onPress={() =>
+                    setControlMode((current) =>
+                      current === "auto"
+                        ? "touch"
+                        : current === "touch"
+                          ? "keyboard"
+                          : current === "keyboard"
+                            ? "gamepad"
+                            : "auto"
+                    )
+                  }
+                >
+                  <Text style={styles.pauseOptionText}>
+                    Control: {controlMode === "auto"
+                      ? "AUTO"
+                      : controlMode === "touch"
+                        ? "TÁCTIL"
+                        : controlMode === "keyboard"
+                          ? "TECLADO"
+                          : "MANDO / TV"}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.controlHelpTitle}>CONTROLES</Text>
+                <Text style={styles.controlHelpText}>
+                  Flechas o WASD: mover{"\n"}Enter / centro: seleccionar y pausar{"\n"}Ratón o táctil: tocar los botones{"\n"}Pulsa “Control” para cambiar la zona de botones
+                </Text>
+                <TouchableOpacity
+                  style={styles.pauseSecondaryBtn}
+                  onPress={() => setShowPauseSettings(false)}
+                >
+                  <Text style={styles.pauseSecondaryText}>← VOLVER</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.pauseCharacterRow}>
+                  <Animated.View
+                    style={[
+                      styles.pauseCharacterBubble,
+                      { transform: [{ translateY: pauseCharacterFloat }] },
+                    ]}
+                  >
+                    <Text style={styles.pauseCharacterEmoji}>
+                      {CHARACTERS.find((c) => c.id === selectedChar)?.emoji ?? "🐔"}
+                    </Text>
+                  </Animated.View>
+                  <View>
+                    <Text style={styles.pauseEyebrow}>PARTIDA EN PAUSA</Text>
+                    <Text style={styles.pauseTitle}>Pollo Crossy</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.pausePrimaryBtn} onPress={togglePause}>
+                  <Text style={styles.pausePrimaryText}>▶ CONTINUAR</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pauseSecondaryBtn}
+                  onPress={() => setShowPauseSettings(true)}
+                >
+                  <Text style={styles.pauseSecondaryText}>⚙ AJUSTES</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pauseExitBtn} onPress={returnToMenu}>
+                  <Text style={styles.pauseExitText}>← SALIR DE LA PARTIDA</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Start screen */}
       {!started && !showShop && (
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, compactLayout && styles.overlayCompact]}>
           <Text style={styles.titleEmoji}>
             {CHARACTERS.find((c) => c.id === selectedChar)?.emoji ?? "🐔"}
           </Text>
@@ -2531,7 +3227,7 @@ export default function GameScreen() {
           )}
           <TouchableOpacity
             style={styles.startBtn}
-            onPress={() => setStarted(true)}
+            onPress={startRound}
           >
             <Text style={styles.startBtnText}>JUGAR</Text>
           </TouchableOpacity>
@@ -2553,7 +3249,7 @@ export default function GameScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowShop(true)}
+            onPress={openShop}
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
           </TouchableOpacity>
@@ -2568,7 +3264,7 @@ export default function GameScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowAchievements(true)}
+            onPress={openAchievements}
           >
             <Text style={styles.shopBtnText}>🏅 LOGROS DEL DÍA</Text>
           </TouchableOpacity>
@@ -2577,7 +3273,7 @@ export default function GameScreen() {
 
       {/* Game over */}
       {gameOver && !showShop && !showAchievements && (
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, compactLayout && styles.overlayCompact]}>
           <Text style={styles.gameOverTitle}>¡Oh no!</Text>
           <Text style={styles.gameOverSub}>¡Fue atropellado!</Text>
           <Text style={styles.gameOverScore}>{score}</Text>
@@ -2610,15 +3306,21 @@ export default function GameScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowShop(true)}
+            onPress={openShop}
           >
             <Text style={styles.shopBtnText}>🛒  PERSONAJES</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shopBtn}
-            onPress={() => setShowAchievements(true)}
+            onPress={openAchievements}
           >
             <Text style={styles.shopBtnText}>🏅 LOGROS DEL DÍA</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shopBtn}
+            onPress={returnToMenu}
+          >
+            <Text style={styles.shopBtnText}>← VOLVER AL MENÚ</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2736,7 +3438,12 @@ export default function GameScreen() {
         const active = selectedChar === char.id;
         const canBuy = !owned && totalCoins >= char.cost;
         return (
-          <View style={styles.shopOverlay}>
+          <View
+            style={[
+              styles.shopOverlay,
+              Platform.OS === "web" && styles.previewOverlayWeb,
+            ]}
+          >
             <TouchableOpacity
               style={styles.previewBack}
               onPress={() => setPreviewChar(null)}
@@ -2744,8 +3451,13 @@ export default function GameScreen() {
               <Text style={styles.shopBackText}>← PERSONAJES</Text>
             </TouchableOpacity>
 
-            {/* 3-D animated preview */}
-            <CharacterPreviewGL charId={previewChar} />
+            {/* WebView wrappers use the single persistent game canvas. Native
+                Expo can still use the separate animated character preview. */}
+            {Platform.OS === "web" ? (
+              <View style={styles.previewWebCard} />
+            ) : (
+              <CharacterPreviewGL charId={previewChar} />
+            )}
 
             <Text style={styles.previewName}>{char.emoji}  {char.name}</Text>
             <Text style={styles.previewDesc}>{CHAR_DESC[char.id]}</Text>
@@ -2793,7 +3505,7 @@ export default function GameScreen() {
       })()}
 
       {/* D-pad */}
-      {started && !gameOver && (
+      {started && !gameOver && !paused && controlMode !== "keyboard" && controlMode !== "gamepad" && (
         <View style={styles.dpad}>
           <View style={styles.dpadRow}>
             <TouchableOpacity
@@ -2812,7 +3524,14 @@ export default function GameScreen() {
             >
               <Text style={styles.dpadArrow}>◀</Text>
             </TouchableOpacity>
-            <View style={styles.dpadCenter} />
+            <TouchableOpacity
+              style={styles.dpadCenter}
+              onPress={togglePause}
+              activeOpacity={0.7}
+              accessibilityLabel="Pausar partida"
+            >
+              <Text style={styles.dpadCenterText}>●</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.dpadBtn}
               onPress={() => moveRelative(1, 0)}
@@ -2930,6 +3649,147 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 2,
   },
+  pauseBtn: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 80 : 56,
+    right: 78,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 14,
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 20,
+  },
+  pauseBtnText: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  pauseOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.68)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    zIndex: 30,
+  },
+  pauseCard: {
+    width: "100%",
+    maxWidth: 390,
+    backgroundColor: "rgba(16,24,48,0.96)",
+    borderRadius: 26,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,215,0,0.5)",
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  pauseCharacterRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    marginBottom: 4,
+  },
+  pauseCharacterBubble: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: "rgba(255,215,0,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,215,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pauseCharacterEmoji: {
+    fontSize: 46,
+  },
+  pauseEyebrow: {
+    color: "#ffffff99",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  pauseTitle: {
+    color: "#FFD700",
+    fontSize: 27,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  pausePrimaryBtn: {
+    width: "100%",
+    borderRadius: 22,
+    backgroundColor: "#FFD700",
+    alignItems: "center",
+    paddingVertical: 13,
+    marginTop: 4,
+  },
+  pausePrimaryText: {
+    color: "#222",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  pauseSecondaryBtn: {
+    width: "100%",
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  pauseSecondaryText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  pauseExitBtn: {
+    width: "100%",
+    borderRadius: 22,
+    backgroundColor: "rgba(255,68,68,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,100,100,0.45)",
+    alignItems: "center",
+    paddingVertical: 11,
+  },
+  pauseExitText: {
+    color: "#ffb0b0",
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+  },
+  pauseOption: {
+    width: "100%",
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.11)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  pauseOptionText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  controlHelpTitle: {
+    color: "#FFD700",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    marginTop: 3,
+  },
+  controlHelpText: {
+    color: "#ffffffbb",
+    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 20,
+  },
   gameOverCoins: {
     backgroundColor: "rgba(255,215,0,0.18)",
     borderRadius: 14,
@@ -2979,6 +3839,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  overlayCompact: {
+    gap: 5,
+    paddingVertical: 8,
   },
   titleEmoji: { fontSize: 72 },
   gameName: {
@@ -3160,6 +4026,19 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 6,
     backgroundColor: "#141428",
+  },
+  previewWebCard: {
+    width: "100%",
+    height: 220,
+    borderRadius: 20,
+    overflow: "hidden",
+    marginBottom: 6,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewOverlayWeb: {
+    backgroundColor: "rgba(10,10,30,0.68)",
   },
   thumbMinter: {
     // Offscreen but real size so drawingBuffer is non-zero
@@ -3360,5 +4239,16 @@ const styles = StyleSheet.create({
   dpadCenter: {
     width: BTN,
     height: BTN,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,215,0,0.18)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,215,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dpadCenterText: {
+    color: "#FFD700",
+    fontSize: 18,
+    fontWeight: "900",
   },
 });
